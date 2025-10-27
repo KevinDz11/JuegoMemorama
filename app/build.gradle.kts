@@ -28,11 +28,13 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // --- CORRECCIÓN AQUÍ ---
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        // --- CORRECCIÓN AQUÍ ---
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -60,9 +62,10 @@ dependencies {
     // Para ViewModel en Compose
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
 
-    // Para animaciones
-    implementation("androidx.compose.animation:animation:1.7.0-beta05")
+    // Para animaciones (--- CORRECCIÓN AQUÍ ---)
+    // Se quitó la versión beta para que el BOM (platform) la controle
+    implementation("androidx.compose.animation:animation")
 
-    // ¡PARA LOS ÍCONOS EXTRA (COMO QUESTIONMARK)!  
+    // ¡PARA LOS ÍCONOS EXTRA (COMO QUESTIONMARK)!
     implementation("androidx.compose.material3:material3-icons-extended")
 }

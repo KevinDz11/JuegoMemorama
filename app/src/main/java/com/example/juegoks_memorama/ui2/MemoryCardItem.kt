@@ -7,8 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons // <-- Importación BÁSICA
-import androidx.compose.material.icons.filled.QuestionMark // <-- ¡LA IMPORTACIÓN DEL PAQUETE EXTENDIDO!
+// --- CORRECCIÓN AQUÍ ---
+import androidx.compose.material3.icons.Icons // Importación de Material 3
+import androidx.compose.material3.icons.filled.QuestionMark // Importación de Material 3
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
