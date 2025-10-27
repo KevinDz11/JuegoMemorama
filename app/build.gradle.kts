@@ -2,7 +2,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.23"
 }
+
 
 android {
     namespace = "com.example.juegoks_memorama"
@@ -68,4 +70,6 @@ dependencies {
 
     // ¡PARA LOS ÍCONOS EXTRA (COMO QUESTIONMARK)!
     implementation("androidx.compose.material3:material3-icons-extended")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
 }

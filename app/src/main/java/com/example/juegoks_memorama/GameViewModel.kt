@@ -8,17 +8,29 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import kotlinx.serialization.encodeToString // Asegúrate de que este import exista
+import kotlinx.serialization.json.Json
 
-class GameViewModel : ViewModel() {
+class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(GameUiState())
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
 
+    private val prefs = application.getSharedPreferences("memorama_prefs", Application.MODE_PRIVATE)
+    private val SAVED_GAME_KEY = "saved_game_state"
+
+
     init {
-        resetGame()
+        // Intenta cargar el juego al iniciar
+        if (!loadGame()) {
+            // Si no hay juego guardado, inicia uno nuevo
+            startNewGame()
+        }
     }
 
-    fun resetGame() {
+    private fun startNewGame() {
         val gameCards = (CardValues.icons + CardValues.icons) // Duplica la lista de iconos
             .shuffled() // Mezcla las cartas
             .mapIndexed { index, icon -> // Crea los objetos MemoryCard
@@ -28,6 +40,12 @@ class GameViewModel : ViewModel() {
                 )
             }
         _uiState.value = GameUiState(cards = gameCards)
+        // Borra la partida guardada al crear una nueva
+        prefs.edit().remove(SAVED_GAME_KEY).apply()
+    }
+
+    fun resetGame() {
+        startNewGame()
     }
 
     // Esta es la función principal que se llama al tocar una carta
@@ -95,6 +113,61 @@ class GameViewModel : ViewModel() {
                     )
                 }
             }
+            saveGame()
         }
     }
+    private fun saveGame() {
+        // 1. Convierte el estado actual a un estado "guardable"
+        val currentState = _uiState.value
+        val savableCards = currentState.cards.map { card ->
+            SavedCardState(
+                // Guarda el índice del ícono, no el objeto ImageVector
+                iconIndex = CardValues.icons.indexOf(card.imageVector),
+                isFaceUp = false, // Siempre guarda boca abajo
+                isMatched = card.isMatched,
+                id = card.id
+            )
+        }
+        val savedState = SavedGameState(cards = savableCards, score = currentState.score)
+
+        // 2. Convierte el estado a un String JSON
+        val jsonString = Json.encodeToString(savedState)
+
+        // 3. Guarda el string en SharedPreferences
+        prefs.edit().putString(SAVED_GAME_KEY, jsonString).apply()
+    }
+    private fun loadGame(): Boolean {
+        // 1. Lee el string JSON de SharedPreferences
+        val jsonString = prefs.getString(SAVED_GAME_KEY, null) ?: return false
+
+        try {
+            // 2. Convierte el JSON de vuelta a nuestro objeto SavedGameState
+            val savedState = Json.decodeFromString<SavedGameState>(jsonString)
+
+            // 3. Reconstruye el estado del juego (GameUiState) desde el estado guardado
+            val loadedCards = savedState.cards.map { savedCard ->
+                MemoryCard(
+                    id = savedCard.id,
+                    // Recupera el ImageVector usando el índice guardado
+                    imageVector = CardValues.icons[savedCard.iconIndex],
+                    isFaceUp = savedCard.isFaceUp,
+                    isMatched = savedCard.isMatched
+                )
+            }
+
+            _uiState.value = GameUiState(
+                cards = loadedCards,
+                score = savedState.score,
+                selectedCards = emptyList(), // Siempre inicia sin selección
+                isCheckingMatch = false
+            )
+            return true
+
+        } catch (e: Exception) {
+            // Si falla el parsing (p.ej. datos corruptos), borra la partida y empieza de nuevo
+            prefs.edit().remove(SAVED_GAME_KEY).apply()
+            return false
+        }
+    }
+
 }
