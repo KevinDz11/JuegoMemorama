@@ -1,4 +1,4 @@
-package com.example.juegoks_memorama
+package com.example.juegoks_memorama // Tu nombre de paquete
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -10,8 +10,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.example.juegoks_memorama.ui2.GameScreen // <-- Asegúrate que la ruta sea correcta
-import com.example.juego.ui.theme.JuegoTheme // <-- El nombre de tu tema
+import com.example.juegoks_memorama.ui.theme.JuegoKSMemoramaTheme // Importa tu Tema
+import com.example.juegoks_memorama.ui2.GameScreen // Importa tu pantalla de ui2
 
 class MainActivity : ComponentActivity() {
 
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            JuegoTheme {
+            JuegoKSMemoramaTheme { // Usa el nombre de tu tema
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

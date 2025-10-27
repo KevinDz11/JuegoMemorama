@@ -1,4 +1,4 @@
-package com.example.juegoks_memorama
+package com.example.juegoks_memorama // Tu nombre de paquete
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

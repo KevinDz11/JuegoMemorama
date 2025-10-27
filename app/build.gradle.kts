@@ -58,8 +58,11 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // Para ViewModel en Compose
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3") // O la versión más nueva
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
 
-    // Para animaciones (como la de voltear la carta)
-    implementation("androidx.compose.animation:animation:1.7.0-beta05") // O la versión más nueva
+    // Para animaciones
+    implementation("androidx.compose.animation:animation:1.7.0-beta05")
+
+    // ¡PARA LOS ÍCONOS EXTRA (COMO QUESTIONMARK)!  
+    implementation("androidx.compose.material3:material3-icons-extended")
 }

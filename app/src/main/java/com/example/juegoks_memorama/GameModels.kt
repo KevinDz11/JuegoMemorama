@@ -1,12 +1,6 @@
-package com.example.juegoks_memorama
+package com.example.juegoks_memorama // Tu nombre de paquete
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.Icons // Importación genérica de íconos
 import androidx.compose.ui.graphics.vector.ImageVector
 
 // 1. Define cómo es una sola carta
@@ -27,6 +21,7 @@ data class GameUiState(
 
 // 3. Lista de iconos que usaremos para los pares
 object CardValues {
+    // Estos íconos SÍ están en el paquete básico "Icons.Default"
     val icons = listOf(
         Icons.Default.Favorite,
         Icons.Default.Face,
@@ -34,8 +29,5 @@ object CardValues {
         Icons.Default.Star,
         Icons.Default.Lock,
         Icons.Default.Send
-        // Puedes agregar más pares si quieres (ej. 8 pares para una cuadrícula de 4x4)
-        // Icons.Default.Add,
-        // Icons.Default.Call
     )
 }

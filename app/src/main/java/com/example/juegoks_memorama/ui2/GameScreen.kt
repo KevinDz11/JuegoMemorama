@@ -1,3 +1,5 @@
+package com.example.juegoks_memorama.ui2 // Tu paquete ui2
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.juego.GameUiState
+import com.example.juegoks_memorama.GameUiState // Importa tu modelo
 
 @Composable
 fun GameScreen(
@@ -39,7 +41,7 @@ fun GameScreen(
         ) {
             items(state.cards.size) { index ->
                 val card = state.cards[index]
-                MemoryCardItem(
+                MemoryCardItem( // Llama a la carta del mismo paquete
                     card = card,
                     onClick = { onCardClick(index) }
                 )

@@ -1,4 +1,4 @@
-package com.example.juegoks_memorama.ui2
+package com.example.juegoks_memorama.ui2 // Tu paquete ui2
 
 // Importaciones necesarias para la UI y la animación
 import androidx.compose.animation.core.animateFloatAsState
@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.QuestionMark
+import androidx.compose.material.icons.Icons // <-- Importación BÁSICA
+import androidx.compose.material.icons.filled.QuestionMark // <-- ¡LA IMPORTACIÓN DEL PAQUETE EXTENDIDO!
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -19,7 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import com.example.juego.MemoryCard
+import com.example.juegoks_memorama.MemoryCard // Importa tu modelo
 
 @Composable
 fun MemoryCardItem(
@@ -68,7 +68,8 @@ fun MemoryCardItem(
             } else {
                 // Si no, muestra el reverso (el signo de interrogación)
                 Icon(
-                    imageVector = Icons.Default.QuestionMark,
+                    // ¡AQUÍ SE USA!
+                    imageVector = Icons.Filled.QuestionMark,
                     contentDescription = "Reverso de la carta",
                     modifier = Modifier.fillMaxSize(0.8f)
                 )
