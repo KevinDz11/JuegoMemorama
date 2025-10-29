@@ -47,6 +47,12 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
+private fun formatTime(seconds: Long): String {
+    val minutes = seconds / 60
+    val remainingSeconds = seconds % 60
+    return "%02d:%02d".format(minutes, remainingSeconds)
+}
+@Composable
 fun MemoryGameScreen(
     viewModel: MemoryGameViewModel = hiltViewModel()
 ) {
@@ -62,6 +68,7 @@ fun MemoryGameScreen(
         GameHeader(
             moves = gameState.moves,
             matchedPairs = gameState.matchedPairs,
+            elapsedTime = gameState.elapsedTimeInSeconds,
             onNewGame = { viewModel.startNewGame() }
         )
 
@@ -85,6 +92,7 @@ fun MemoryGameScreen(
 fun GameHeader(
     moves: Int,
     matchedPairs: Int,
+    elapsedTime: Long,
     onNewGame: () -> Unit
 ) {
     Row(
@@ -100,7 +108,11 @@ fun GameHeader(
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                text = "Parejas: $matchedPairs/8",
+                text = "Parejas: $matchedPairs/15",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = "Tiempo: ${formatTime(elapsedTime)}",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -117,7 +129,7 @@ fun CardGrid(
     onCardClick: (com.example.juegoks_memorama.model.Card) -> Unit
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        columns = GridCells.Fixed(5),
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)

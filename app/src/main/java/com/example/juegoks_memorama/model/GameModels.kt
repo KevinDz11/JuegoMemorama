@@ -11,5 +11,7 @@ data class GameState(
     val cards: List<Card> = emptyList(),
     val moves: Int = 0,
     val matchedPairs: Int = 0,
-    val gameCompleted: Boolean = false
+    val gameCompleted: Boolean = false,
+    val elapsedTimeInSeconds: Long = 0,
+    val isTimerRunning: Boolean = false
 )

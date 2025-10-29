@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.juegoks_memorama.model.Card //import com.example.memorygame.model.Card
 import com.example.juegoks_memorama.model.GameState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update // <--- AÑADIR IMPORT
+import kotlinx.coroutines.isActive // <--- AÑADIR IMPORT
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,13 +24,15 @@ class MemoryGameViewModel @Inject constructor() : ViewModel() {
     private var firstSelectedCard: Card? = null
     private var secondSelectedCard: Card? = null
     private var canFlip = true
+    private var timerJob: Job? = null
 
     init {
         startNewGame()
     }
 
     fun startNewGame() {
-        val cardValues = (1..8).flatMap { listOf(it, it) }.shuffled()
+        timerJob?.cancel()
+        val cardValues = (1..15).flatMap { listOf(it, it) }.shuffled()
         val cards = cardValues.mapIndexed { index, value ->
             Card(id = index, value = value)
         }
@@ -38,8 +43,24 @@ class MemoryGameViewModel @Inject constructor() : ViewModel() {
         canFlip = true
     }
 
+    private fun startTimer() {
+        if (_gameState.value.isTimerRunning) return // No iniciar si ya está corriendo
+
+        _gameState.update { it.copy(isTimerRunning = true) }
+        timerJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                _gameState.update {
+                    it.copy(elapsedTimeInSeconds = it.elapsedTimeInSeconds + 1)
+                }
+            }
+        }
+    }
+
     fun onCardClick(card: Card) {
         if (!canFlip || card.isFaceUp || card.isMatched) return
+
+        startTimer()
 
         val currentState = _gameState.value
         val updatedCards = currentState.cards.toMutableList()
@@ -83,13 +104,20 @@ class MemoryGameViewModel @Inject constructor() : ViewModel() {
             updatedCards[secondIndex] = secondCard.copy(isMatched = true)
 
             val newMatchedPairs = currentState.matchedPairs + 1
-            val gameCompleted = newMatchedPairs == 8
+            val gameCompleted = newMatchedPairs == 15
+
+            // --- MODIFICAR ESTO ---
+            if (gameCompleted) {
+                timerJob?.cancel() // Detiene el timer
+            }
 
             _gameState.value = currentState.copy(
                 cards = updatedCards,
                 matchedPairs = newMatchedPairs,
-                gameCompleted = gameCompleted
+                gameCompleted = gameCompleted,
+                isTimerRunning = !gameCompleted // Actualiza el estado del timer
             )
+            // --- FIN DE MODIFICACIÓN ---
         } else {
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard?.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard?.id }
