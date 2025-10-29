@@ -2,6 +2,7 @@ package com.example.juegoks_memorama.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.juegoks_memorama.data.GameRepository
 import com.example.juegoks_memorama.model.Card //import com.example.memorygame.model.Card
 import com.example.juegoks_memorama.model.GameState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -10,13 +11,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update // <--- AÑADIR IMPORT
 import kotlinx.coroutines.isActive // <--- AÑADIR IMPORT
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class MemoryGameViewModel @Inject constructor() : ViewModel() {
+class MemoryGameViewModel @Inject constructor(
+    private val repository: GameRepository
+) : ViewModel() {
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState = _gameState.asStateFlow()
@@ -27,7 +31,34 @@ class MemoryGameViewModel @Inject constructor() : ViewModel() {
     private var timerJob: Job? = null
 
     init {
-        startNewGame()
+        viewModelScope.launch {
+            // Intenta cargar la partida guardada
+            val savedGame = repository.savedGameState.firstOrNull()
+            if (savedGame != null && !savedGame.gameCompleted) {
+                _gameState.value = savedGame
+                if (savedGame.isTimerRunning) {
+                    startTimer() // Reanuda el timer si estaba corriendo
+                }
+            } else {
+                startNewGame() // Inicia juego nuevo si no hay partida o estaba completa
+            }
+
+            // Lanza el observador para guardar automáticamente
+            observeAndSaveGameState()
+        }
+    }
+
+    private fun observeAndSaveGameState() {
+        viewModelScope.launch {
+            gameState.collect { state ->
+                if (!state.gameCompleted && state.moves > 0) { // Guarda solo si el juego empezó y no ha terminado
+                    repository.saveGameState(state)
+                }
+                if(state.gameCompleted){
+                    repository.clearGameState() // Limpia al completar
+                }
+            }
+        }
     }
 
     fun startNewGame() {
@@ -41,6 +72,10 @@ class MemoryGameViewModel @Inject constructor() : ViewModel() {
         firstSelectedCard = null
         secondSelectedCard = null
         canFlip = true
+
+        viewModelScope.launch {
+            repository.clearGameState()
+        }
     }
 
     private fun startTimer() {
