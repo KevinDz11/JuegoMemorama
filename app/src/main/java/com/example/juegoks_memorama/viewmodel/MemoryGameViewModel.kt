@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.juegoks_memorama.data.GameRepository
 import com.example.juegoks_memorama.model.Card //import com.example.memorygame.model.Card
+import com.example.juegoks_memorama.model.GameMode // --- CAMBIO: Importar GameMode
 import com.example.juegoks_memorama.model.GameState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -29,6 +30,7 @@ class MemoryGameViewModel @Inject constructor(
     private var secondSelectedCard: Card? = null
     private var canFlip = true
     private var timerJob: Job? = null
+    private var currentGameMode: GameMode = GameMode.SINGLE_PLAYER // --- CAMBIO: Seguir el modo actual
 
     init {
         viewModelScope.launch {
@@ -36,11 +38,13 @@ class MemoryGameViewModel @Inject constructor(
             val savedGame = repository.savedGameState.firstOrNull()
             if (savedGame != null && !savedGame.gameCompleted) {
                 _gameState.value = savedGame
+                // Asumimos que el juego guardado es siempre Un Jugador.
+                currentGameMode = GameMode.SINGLE_PLAYER
                 if (savedGame.isTimerRunning) {
                     startTimer() // Reanuda el timer si estaba corriendo
                 }
             } else {
-                startNewGame() // Inicia juego nuevo si no hay partida o estaba completa
+                // Se espera que setGameMode sea llamado al iniciar la pantalla
             }
 
             // Lanza el observador para guardar automáticamente
@@ -48,10 +52,29 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
+    // --- CAMBIO: Nuevo método para establecer el modo de juego ---
+    fun setGameMode(mode: GameMode) {
+        if (currentGameMode != mode) {
+            currentGameMode = mode
+            startNewGame()
+
+            if (mode == GameMode.BLUETOOTH) {
+                // Lógica de inicialización de Bluetooth (por implementar)
+            } else {
+                // Lógica para detener Bluetooth si se vuelve a Single Player
+            }
+        } else if (_gameState.value.cards.isEmpty()) {
+            // Iniciar juego si no hay cartas (primera carga)
+            startNewGame()
+        }
+    }
+    // -------------------------------------------------------------
+
     private fun observeAndSaveGameState() {
         viewModelScope.launch {
             gameState.collect { state ->
-                if (!state.gameCompleted && state.moves > 0) { // Guarda solo si el juego empezó y no ha terminado
+                // --- CAMBIO: Solo guardar en modo Un Jugador ---
+                if (currentGameMode == GameMode.SINGLE_PLAYER && !state.gameCompleted && state.moves > 0) {
                     repository.saveGameState(state)
                 }
                 if(state.gameCompleted){
@@ -76,9 +99,15 @@ class MemoryGameViewModel @Inject constructor(
         viewModelScope.launch {
             repository.clearGameState()
         }
+
+        if (currentGameMode == GameMode.BLUETOOTH) {
+            // Lógica de inicio de partida Bluetooth (por implementar)
+        }
     }
 
     private fun startTimer() {
+        if (currentGameMode == GameMode.BLUETOOTH) return // --- CAMBIO: No usar el timer local en Bluetooth
+
         if (_gameState.value.isTimerRunning) return // No iniciar si ya está corriendo
 
         _gameState.update { it.copy(isTimerRunning = true) }
@@ -93,6 +122,14 @@ class MemoryGameViewModel @Inject constructor(
     }
 
     fun onCardClick(card: Card) {
+        // --- CAMBIO: Lógica inicial para Bluetooth ---
+        if (currentGameMode == GameMode.BLUETOOTH) {
+            // Antes de continuar, aquí se debería enviar el movimiento por Bluetooth y
+            // esperar a que el otro jugador lo valide/reciba.
+            // Para la demo, continuaremos con la lógica local por ahora.
+        }
+        // ------------------------------------------
+
         if (!canFlip || card.isFaceUp || card.isMatched) return
 
         startTimer()
@@ -144,6 +181,9 @@ class MemoryGameViewModel @Inject constructor(
             // --- MODIFICAR ESTO ---
             if (gameCompleted) {
                 timerJob?.cancel() // Detiene el timer
+                if (currentGameMode == GameMode.BLUETOOTH) {
+                    // Lógica para declarar al ganador y terminar la conexión
+                }
             }
 
             _gameState.value = currentState.copy(
@@ -153,6 +193,10 @@ class MemoryGameViewModel @Inject constructor(
                 isTimerRunning = !gameCompleted // Actualiza el estado del timer
             )
             // --- FIN DE MODIFICACIÓN ---
+
+            if (currentGameMode == GameMode.BLUETOOTH) {
+                // Lógica de "turno extra" o "pasar turno" para Bluetooth
+            }
         } else {
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard?.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard?.id }
@@ -165,6 +209,10 @@ class MemoryGameViewModel @Inject constructor(
             }
 
             _gameState.value = currentState.copy(cards = updatedCards)
+
+            if (currentGameMode == GameMode.BLUETOOTH) {
+                // Lógica de "pasar turno"
+            }
         }
 
         firstSelectedCard = null

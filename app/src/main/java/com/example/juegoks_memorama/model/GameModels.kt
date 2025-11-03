@@ -9,6 +9,11 @@ data class Card(
     var isFaceUp: Boolean = false,
     var isMatched: Boolean = false
 )
+
+enum class GameMode {
+    SINGLE_PLAYER,
+    BLUETOOTH
+}
 @Serializable
 data class GameState(
     val cards: List<Card> = emptyList(),

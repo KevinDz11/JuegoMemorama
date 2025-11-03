@@ -45,6 +45,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import com.example.juegoks_memorama.model.GameMode
 
 @Composable
 private fun formatTime(seconds: Long): String {
@@ -54,10 +55,16 @@ private fun formatTime(seconds: Long): String {
 }
 @Composable
 fun MemoryGameScreen(
+    gameMode: GameMode,
+    onExitGame: () -> Unit,
     viewModel: MemoryGameViewModel = hiltViewModel()
 ) {
     // CORRECCIÓN: Cambiar collectAsState() por collectAsStateWithLifecycle()
     val gameState by viewModel.gameState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(gameMode) {
+        viewModel.setGameMode(gameMode)
+    }
 
     Column(
         modifier = Modifier
@@ -65,13 +72,29 @@ fun MemoryGameScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Text(
+            text = if (gameMode == GameMode.SINGLE_PLAYER) "Modo: Un Jugador" else "Modo: Multijugador (Bluetooth)",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
         GameHeader(
             moves = gameState.moves,
             matchedPairs = gameState.matchedPairs,
             elapsedTime = gameState.elapsedTimeInSeconds,
-            onNewGame = { viewModel.startNewGame() }
+            onNewGame = { viewModel.startNewGame() },
+            onExitGame = onExitGame
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (gameMode == GameMode.BLUETOOTH) {
+            Text(
+                text = "Lógica de conexión Bluetooth en desarrollo...",
+                modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.error
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
 
         CardGrid(
@@ -93,7 +116,8 @@ fun GameHeader(
     moves: Int,
     matchedPairs: Int,
     elapsedTime: Long,
-    onNewGame: () -> Unit
+    onNewGame: () -> Unit,
+    onExitGame: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -117,8 +141,14 @@ fun GameHeader(
             )
         }
 
-        Button(onClick = onNewGame) {
-            Text("Nuevo Juego")
+        Column(horizontalAlignment = Alignment.End) {
+            Button(onClick = onNewGame) {
+                Text("Nuevo Juego")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = onExitGame) {
+                Text("Salir")
+            }
         }
     }
 }
