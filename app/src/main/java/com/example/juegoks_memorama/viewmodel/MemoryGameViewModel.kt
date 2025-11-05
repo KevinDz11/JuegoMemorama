@@ -20,13 +20,13 @@ import javax.inject.Inject
 import com.example.juegoks_memorama.model.Difficulty // Importar
 import com.example.juegoks_memorama.model.SaveFormat // Importar
 import com.example.juegoks_memorama.model.Move
+import com.example.juegoks_memorama.model.GameHistoryItem
 import com.example.juegoks_memorama.data.SaveFormatSerializer // Importar
 
-// --- NUEVO ESTADO DE UI PARA GUARDADO/CARGA ---
 data class GameUiState(
     val showSaveDialog: Boolean = false,
-    val showLoadDialog: Boolean = false,
-    val saveFiles: List<Pair<String, SaveFormat>> = emptyList()
+    val showHistoryDialog: Boolean = false, // CAMBIO: showLoadDialog -> showHistoryDialog
+    val historyItems: List<GameHistoryItem> = emptyList() // CAMBIO: saveFiles -> historyItems
 )
 
 @HiltViewModel
@@ -276,26 +276,40 @@ class MemoryGameViewModel @Inject constructor(
         _gameUiState.update { it.copy(showSaveDialog = show) }
     }
 
-    fun showLoadDialog(show: Boolean) {
-        _gameUiState.update { it.copy(showLoadDialog = show) }
+    // CAMBIO: Renombrado y lógica nueva
+    fun showHistoryDialog(show: Boolean) {
+        _gameUiState.update { it.copy(showHistoryDialog = show) }
         if (show) {
             viewModelScope.launch {
+                // Obtenemos los nombres de archivo
                 val files = repository.getAvailableSaveFiles()
-                _gameUiState.update { it.copy(saveFiles = files) }
+
+                // Cargamos el estado de CADA archivo para clasificarlo
+                val historyList = files.mapNotNull { (filename, format) ->
+                    val loadedState = repository.loadGameManual(filename, format)
+                    if (loadedState != null) {
+                        GameHistoryItem(filename, format, loadedState)
+                    } else {
+                        null
+                    }
+                }
+
+                _gameUiState.update { it.copy(historyItems = historyList) }
             }
         }
     }
 
-    fun saveGame(format: SaveFormat) {
+    // CAMBIO: Acepta el nombre del archivo
+    fun saveGame(filename: String, format: SaveFormat) {
         viewModelScope.launch {
-            // Usa un nombre de archivo dinámico o fijo con fecha/hora
-            val filename = "memorama_save" + System.currentTimeMillis() / 1000
+            // Usa el nombre de archivo proporcionado por el usuario
             repository.saveGameManual(_gameState.value, format, filename)
             showSaveDialog(false)
         }
     }
 
-    fun loadGame(filename: String, format: SaveFormat) {
+    // CAMBIO: Renombrado
+    fun loadGameFromHistory(filename: String, format: SaveFormat) {
         viewModelScope.launch {
             val loadedState = repository.loadGameManual(filename, format)
             if (loadedState != null) {
@@ -312,7 +326,7 @@ class MemoryGameViewModel @Inject constructor(
                 }
 
             }
-            showLoadDialog(false)
+            showHistoryDialog(false) // Cierra el diálogo de historial
         }
     }
 }

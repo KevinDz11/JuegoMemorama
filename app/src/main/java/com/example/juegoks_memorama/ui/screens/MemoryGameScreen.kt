@@ -47,7 +47,13 @@ import com.example.juegoks_memorama.model.Difficulty
 import com.example.juegoks_memorama.model.GameMode
 import com.example.juegoks_memorama.model.SaveFormat
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.juegoks_memorama.model.GameHistoryItem
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 
 @Composable
 private fun formatTime(seconds: Long): String {
@@ -111,8 +117,8 @@ fun MemoryGameScreen(
             maxPairs = gameState.difficulty.pairs, // Pasar el máximo de pares
             onNewGame = { viewModel.startNewGame() },
             onExitGame = onExitGame,
-            onShowSaveDialog = { viewModel.showSaveDialog(true) }, // Nuevo
-            onShowLoadDialog = { viewModel.showLoadDialog(true) } // Nuevo
+            onShowSaveDialog = { viewModel.showSaveDialog(true) },
+            onShowHistoryDialog = { viewModel.showHistoryDialog(true) } // CAMBIO
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -129,34 +135,38 @@ fun MemoryGameScreen(
         CardGrid(
             cards = gameState.cards,
             columns = gameState.difficulty.columns, // Usar columnas de la dificultad
-            onCardClick = { card -> viewModel.onCardClick(card) }
+            onCardClick = { card -> viewModel.onCardClick(card) },
+            modifier = Modifier.weight(1f) // NUEVO: Para responsividad
         )
 
         if (gameState.gameCompleted) {
             GameCompletedDialog(
                 moves = gameState.moves,
                 score = gameState.score, // Mostrar puntuación final
-                onPlayAgain = { viewModel.startNewGame() }
+                onPlayAgain = { viewModel.startNewGame() },
+                onSaveResult = { viewModel.showSaveDialog(true) }, // NUEVO
+                onExit = onExitGame // NUEVO
             )
         }
 
         // --- DIÁLOGOS DE GUARDADO/CARGA ---
         if (uiState.showSaveDialog) {
             SaveGameDialog(
-                onSave = { format ->
-                    scope.launch { viewModel.saveGame(format) }
+                onSave = { filename, format -> // CAMBIO
+                    scope.launch { viewModel.saveGame(filename, format) } // CAMBIO
                 },
                 onDismiss = { viewModel.showSaveDialog(false) }
             )
         }
 
-        if (uiState.showLoadDialog) {
-            LoadGameDialog(
-                saveFiles = uiState.saveFiles,
+        // CAMBIO: Cargar el nuevo Diálogo de Historial
+        if (uiState.showHistoryDialog) {
+            HistoryDialog(
+                historyItems = uiState.historyItems,
                 onLoad = { filename, format ->
-                    scope.launch { viewModel.loadGame(filename, format) }
+                    scope.launch { viewModel.loadGameFromHistory(filename, format) }
                 },
-                onDismiss = { viewModel.showLoadDialog(false) }
+                onDismiss = { viewModel.showHistoryDialog(false) }
             )
         }
     }
@@ -166,52 +176,83 @@ fun MemoryGameScreen(
 fun GameHeader(
     moves: Int,
     matchedPairs: Int,
-    score: Int, // Nuevo parámetro
+    score: Int,
     elapsedTime: Long,
-    maxPairs: Int, // Nuevo parámetro
+    maxPairs: Int,
     onNewGame: () -> Unit,
     onExitGame: () -> Unit,
     onShowSaveDialog: () -> Unit,
-    onShowLoadDialog: () -> Unit
+    onShowHistoryDialog: () -> Unit // CAMBIO: Renombrado de onShowLoadDialog
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 8.dp), // Reducir padding horizontal general
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
+        // --- Columna de Estadísticas (Izquierda) ---
+        Column(
+            modifier = Modifier.weight(1f), // Ocupa el espacio disponible
+            horizontalAlignment = Alignment.Start
+        ) {
             Text(
-                text = "Puntuación: $score", // Mostrar Puntuación
-                style = MaterialTheme.typography.bodyLarge,
+                text = "Puntuación: $score",
+                style = MaterialTheme.typography.titleMedium, // Letra más grande
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = "Movimientos: $moves",
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge // Letra más grande
             )
             Text(
                 text = "Parejas: $matchedPairs/$maxPairs",
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge
             )
             Text(
                 text = "Tiempo: ${formatTime(elapsedTime)}",
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge
             )
         }
 
-        Column(horizontalAlignment = Alignment.End) {
-            Button(onClick = onNewGame) {
+        // --- Columna de Botones (Derecha) ---
+        Column(
+            modifier = Modifier.weight(1f), // Ocupa el espacio disponible
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp) // Espacio entre botones
+        ) {
+            // Fila 1: Nuevo Juego
+            Button(
+                onClick = onNewGame,
+                modifier = Modifier.fillMaxWidth(0.9f) // Ancho uniforme
+            ) {
                 Text("Nuevo Juego")
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row {
-                Button(onClick = onShowSaveDialog, modifier = Modifier.padding(end = 8.dp)) { Text("Guardar") }
-                Button(onClick = onShowLoadDialog) { Text("Cargar") }
+
+            // Fila 2: Guardar e Historial
+            Row(
+                modifier = Modifier.fillMaxWidth(0.9f), // Ancho uniforme
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Button(
+                    onClick = onShowSaveDialog,
+                    modifier = Modifier.weight(1f) // Ocupa mitad
+                ) { Text("Guardar") }
+
+                Spacer(modifier = Modifier.weight(0.1f)) // Pequeño espacio
+
+                // CAMBIO: Botón de Cargar ahora es Historial
+                Button(
+                    onClick = onShowHistoryDialog,
+                    modifier = Modifier.weight(1f) // Ocupa mitad
+                ) { Text("Historial") }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = onExitGame) {
+
+            // Fila 3: Salir
+            Button(
+                onClick = onExitGame,
+                modifier = Modifier.fillMaxWidth(0.9f) // Ancho uniforme
+            ) {
                 Text("Salir")
             }
         }
@@ -222,11 +263,12 @@ fun GameHeader(
 fun CardGrid(
     cards: List<com.example.juegoks_memorama.model.Card>,
     columns: Int, // Nuevo parámetro
-    onCardClick: (com.example.juegoks_memorama.model.Card) -> Unit
+    onCardClick: (com.example.juegoks_memorama.model.Card) -> Unit,
+    modifier: Modifier = Modifier // AÑADE ESTE PARÁMETRO
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns), // Usar columnas dinámicamente
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(), // APLICA EL MODIFICADOR AQUÍ
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -321,47 +363,79 @@ fun MemoryCard(
 @Composable
 fun GameCompletedDialog(
     moves: Int,
-    score: Int, // Nuevo parámetro
-    onPlayAgain: () -> Unit
+    score: Int,
+    onPlayAgain: () -> Unit,
+    onSaveResult: () -> Unit, // NUEVO: Para abrir el diálogo de guardado
+    onExit: () -> Unit // NUEVO: Para salir
 ) {
     AlertDialog(
-        onDismissRequest = { },
+        onDismissRequest = { onPlayAgain() }, // Jugar de nuevo si toca fuera
         title = { Text("¡Felicidades!") },
         text = {
             Column {
                 Text("Completaste el juego en $moves movimientos.")
-                Text("Puntuación Final: $score puntos.") // Mostrar puntuación
+                Text("Puntuación Final: $score puntos.")
             }
         },
         confirmButton = {
-            Button(onClick = onPlayAgain) {
-                Text("Jugar de nuevo")
+            Button(onClick = onSaveResult) { // NUEVO
+                Text("Guardar Resultado")
+            }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPlayAgain) {
+                    Text("Jugar de nuevo")
+                }
+                Button(onClick = onExit) { // NUEVO
+                    Text("Salir")
+                }
             }
         }
     )
 }
 
-// --- NUEVO: Diálogo para Guardar Partida ---
+// --- MODIFICADO: Diálogo para Guardar Partida ---
 @Composable
 fun SaveGameDialog(
-    onSave: (SaveFormat) -> Unit,
+    onSave: (String, SaveFormat) -> Unit, // CAMBIO: Ahora recibe el nombre
     onDismiss: () -> Unit
 ) {
     var selectedFormat by remember { mutableStateOf(SaveFormat.JSON) }
+    // CAMBIO: Nuevo estado para el nombre del archivo
+    var filename by rememberSaveable { mutableStateOf("") }
+    val isError = filename.isBlank() // Validar que no esté vacío
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Guardar Partida") },
         text = {
             Column {
+                Text("Ingresa un nombre para tu partida:")
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // CAMBIO: Campo de texto para el nombre
+                OutlinedTextField(
+                    value = filename,
+                    onValueChange = { filename = it },
+                    label = { Text("Nombre de archivo") },
+                    singleLine = true,
+                    isError = isError
+                )
+                if (isError) {
+                    Text("El nombre no puede estar vacío", color = MaterialTheme.colorScheme.error)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
                 Text("Selecciona el formato de guardado:")
                 Spacer(modifier = Modifier.height(16.dp))
+
                 SaveFormat.entries.forEach { format ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { selectedFormat = format }
-                            .padding(8.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(text = "${if (selectedFormat == format) "●" else "○"} ${format.name} (.${format.name.lowercase()})")
@@ -370,7 +444,11 @@ fun SaveGameDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(selectedFormat) }) { Text("Guardar") }
+            Button(
+                // CAMBIO: Pasa el nombre y formato. Deshabilitado si hay error.
+                onClick = { onSave(filename, selectedFormat) },
+                enabled = !isError
+            ) { Text("Guardar") }
         },
         dismissButton = {
             Button(onClick = onDismiss) { Text("Cancelar") }
@@ -378,36 +456,68 @@ fun SaveGameDialog(
     )
 }
 
-// --- NUEVO: Diálogo para Cargar Partida ---
+
+// --- NUEVO: Diálogo para Historial (Reemplaza a LoadGameDialog) ---
 @Composable
-fun LoadGameDialog(
-    saveFiles: List<Pair<String, SaveFormat>>,
+fun HistoryDialog(
+    historyItems: List<GameHistoryItem>,
     onLoad: (String, SaveFormat) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedFile by remember { mutableStateOf<Pair<String, SaveFormat>?>(null) }
 
+    // Particiona la lista en dos: en curso y completadas
+    val (completed, inProgress) = historyItems.partition { it.state.gameCompleted }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Cargar Partida") },
+        title = { Text("Historial de Partidas") },
         text = {
-            Column {
-                Text("Selecciona un archivo para cargar:")
-                Spacer(modifier = Modifier.height(16.dp))
-                if (saveFiles.isEmpty()) {
-                    Text("No hay partidas guardadas.")
+            // Usamos LazyColumn para listas largas
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+
+                // --- SECCIÓN: EN CURSO ---
+                item {
+                    Text(
+                        text = "Partidas en Curso",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+                if (inProgress.isEmpty()) {
+                    item { Text("No hay partidas guardadas en curso.") }
                 } else {
-                    saveFiles.forEach { file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedFile = file }
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val displayText = "${file.first} (${file.second.name})"
-                            Text(text = "${if (selectedFile == file) "●" else "○"} $displayText")
-                        }
+                    items(inProgress) { item ->
+                        HistoryItemRow(
+                            item = item,
+                            isFinished = false,
+                            isSelected = selectedFile?.first == item.filename,
+                            onSelect = { selectedFile = item.filename to item.format }
+                        )
+                    }
+                }
+
+                // --- SECCIÓN: COMPLETADAS ---
+                item {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+                    Text(
+                        text = "Partidas Completadas",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+                if (completed.isEmpty()) {
+                    item { Text("No hay partidas completadas.") }
+                } else {
+                    items(completed) { item ->
+                        HistoryItemRow(
+                            item = item,
+                            isFinished = true,
+                            isSelected = false, // No se pueden seleccionar
+                            onSelect = {} // No hacer nada
+                        )
                     }
                 }
             }
@@ -415,11 +525,61 @@ fun LoadGameDialog(
         confirmButton = {
             Button(
                 onClick = { selectedFile?.let { onLoad(it.first, it.second) } },
-                enabled = selectedFile != null
+                enabled = selectedFile != null // Solo habilitado si se selecciona una partida en curso
             ) { Text("Cargar") }
         },
         dismissButton = {
             Button(onClick = onDismiss) { Text("Cancelar") }
         }
     )
+}
+
+@Composable
+private fun HistoryItemRow(
+    item: GameHistoryItem,
+    isFinished: Boolean,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    val (filename, _, state) = item
+
+    val modifier = if (isFinished) {
+        Modifier.padding(vertical = 8.dp) // No clickeable
+    } else {
+        Modifier
+            .clickable { onSelect() }
+            .padding(vertical = 8.dp)
+    }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!isFinished) {
+            // Radio button para seleccionar
+            Text(
+                text = if (isSelected) "●" else "○",
+                modifier = Modifier.padding(end = 16.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(filename, fontWeight = FontWeight.SemiBold)
+            if (isFinished) {
+                // Mostrar estadísticas de partidas terminadas
+                Text(
+                    text = "Score: ${state.score} | Mov: ${state.moves} | Tiempo: ${formatTime(state.elapsedTimeInSeconds)}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                // Mostrar progreso de partidas en curso
+                Text(
+                    text = "Progreso: ${state.matchedPairs}/${state.difficulty.pairs} pares | Mov: ${state.moves}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
 }

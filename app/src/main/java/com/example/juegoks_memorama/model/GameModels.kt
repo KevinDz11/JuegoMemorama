@@ -43,3 +43,9 @@ data class GameState(
     val elapsedTimeInSeconds: Long = 0,
     val isTimerRunning: Boolean = false
 )
+
+data class GameHistoryItem(
+    val filename: String,
+    val format: SaveFormat,
+    val state: GameState
+)
