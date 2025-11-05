@@ -17,6 +17,17 @@ import kotlinx.coroutines.flow.update // <--- AÑADIR IMPORT
 import kotlinx.coroutines.isActive // <--- AÑADIR IMPORT
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.example.juegoks_memorama.model.Difficulty // Importar
+import com.example.juegoks_memorama.model.SaveFormat // Importar
+import com.example.juegoks_memorama.model.Move
+import com.example.juegoks_memorama.data.SaveFormatSerializer // Importar
+
+// --- NUEVO ESTADO DE UI PARA GUARDADO/CARGA ---
+data class GameUiState(
+    val showSaveDialog: Boolean = false,
+    val showLoadDialog: Boolean = false,
+    val saveFiles: List<Pair<String, SaveFormat>> = emptyList()
+)
 
 @HiltViewModel
 class MemoryGameViewModel @Inject constructor(
@@ -26,72 +37,92 @@ class MemoryGameViewModel @Inject constructor(
     private val _gameState = MutableStateFlow(GameState())
     val gameState = _gameState.asStateFlow()
 
+    private val _gameUiState = MutableStateFlow(GameUiState()) // Nuevo StateFlow para la UI
+    val gameUiState = _gameUiState.asStateFlow()
+
     private var firstSelectedCard: Card? = null
     private var secondSelectedCard: Card? = null
     private var canFlip = true
     private var timerJob: Job? = null
-    private var currentGameMode: GameMode = GameMode.SINGLE_PLAYER // --- CAMBIO: Seguir el modo actual
+    private var currentGameMode: GameMode = GameMode.SINGLE_PLAYER
+    private var currentGameDifficulty: Difficulty = Difficulty.MEDIUM // Nuevo campo para la dificultad
 
     init {
         viewModelScope.launch {
-            // Intenta cargar la partida guardada
-            val savedGame = repository.savedGameState.firstOrNull()
-            if (savedGame != null && !savedGame.gameCompleted) {
-                _gameState.value = savedGame
-                // Asumimos que el juego guardado es siempre Un Jugador.
-                currentGameMode = GameMode.SINGLE_PLAYER
-                if (savedGame.isTimerRunning) {
-                    startTimer() // Reanuda el timer si estaba corriendo
+            try {
+                // CORRECCIÓN DE CRASH: Intentar cargar la partida guardada
+                val savedGame = repository.savedGameState.firstOrNull()
+                if (savedGame != null && !savedGame.gameCompleted) {
+                    _gameState.value = savedGame
+                    currentGameMode = GameMode.SINGLE_PLAYER
+                    currentGameDifficulty = savedGame.difficulty
+                    if (savedGame.isTimerRunning) {
+                        startTimer()
+                    }
                 }
-            } else {
-                // Se espera que setGameMode sea llamado al iniciar la pantalla
+            } catch (e: Exception) {
+                // Si el JSON es incompatible (modelo de datos antiguo), limpiamos el guardado
+                // para evitar futuros crasheos y forzar un estado limpio.
+                repository.clearGameState()
             }
-
-            // Lanza el observador para guardar automáticamente
-            observeAndSaveGameState()
         }
     }
 
-    // --- CAMBIO: Nuevo método para establecer el modo de juego ---
+    // --- NUEVO: Establecer Dificultad ---
+    fun setDifficulty(difficulty: Difficulty) {
+        // Corrección: Asegura que el juego se inicie si la dificultad es diferente o si es la primera carga.
+        if (currentGameDifficulty != difficulty || _gameState.value.cards.isEmpty()) {
+            currentGameDifficulty = difficulty
+            startNewGame(difficulty = difficulty)
+        }
+    }
+    // ------------------------------------
+
     fun setGameMode(mode: GameMode) {
         if (currentGameMode != mode) {
             currentGameMode = mode
-            startNewGame()
-
-            if (mode == GameMode.BLUETOOTH) {
-                // Lógica de inicialización de Bluetooth (por implementar)
+            if (mode == GameMode.SINGLE_PLAYER) {
+                startNewGame(difficulty = currentGameDifficulty)
             } else {
-                // Lógica para detener Bluetooth si se vuelve a Single Player
+                // Para Bluetooth, se usa la dificultad media por defecto
+                startNewGame(difficulty = Difficulty.MEDIUM)
             }
         } else if (_gameState.value.cards.isEmpty()) {
-            // Iniciar juego si no hay cartas (primera carga)
-            startNewGame()
+            startNewGame(difficulty = currentGameDifficulty)
         }
     }
-    // -------------------------------------------------------------
 
     private fun observeAndSaveGameState() {
         viewModelScope.launch {
             gameState.collect { state ->
-                // --- CAMBIO: Solo guardar en modo Un Jugador ---
                 if (currentGameMode == GameMode.SINGLE_PLAYER && !state.gameCompleted && state.moves > 0) {
                     repository.saveGameState(state)
                 }
                 if(state.gameCompleted){
-                    repository.clearGameState() // Limpia al completar
+                    repository.clearGameState()
                 }
             }
         }
     }
 
-    fun startNewGame() {
+    // --- MODIFICADO: Aceptar Dificultad como parámetro ---
+    fun startNewGame(difficulty: Difficulty = currentGameDifficulty) {
         timerJob?.cancel()
-        val cardValues = (1..15).flatMap { listOf(it, it) }.shuffled()
+        currentGameDifficulty = difficulty
+
+        val maxPairs = difficulty.pairs
+        val cardValues = (1..maxPairs).flatMap { listOf(it, it) }.shuffled()
         val cards = cardValues.mapIndexed { index, value ->
             Card(id = index, value = value)
         }
 
-        _gameState.value = GameState(cards = cards)
+        _gameState.value = GameState(
+            difficulty = difficulty,
+            cards = cards,
+            score = 0,
+            matchStreak = 0,
+            moveHistory = emptyList()
+        )
         firstSelectedCard = null
         secondSelectedCard = null
         canFlip = true
@@ -106,9 +137,9 @@ class MemoryGameViewModel @Inject constructor(
     }
 
     private fun startTimer() {
-        if (currentGameMode == GameMode.BLUETOOTH) return // --- CAMBIO: No usar el timer local en Bluetooth
+        if (currentGameMode == GameMode.BLUETOOTH) return
 
-        if (_gameState.value.isTimerRunning) return // No iniciar si ya está corriendo
+        if (_gameState.value.isTimerRunning) return
 
         _gameState.update { it.copy(isTimerRunning = true) }
         timerJob = viewModelScope.launch {
@@ -122,13 +153,9 @@ class MemoryGameViewModel @Inject constructor(
     }
 
     fun onCardClick(card: Card) {
-        // --- CAMBIO: Lógica inicial para Bluetooth ---
         if (currentGameMode == GameMode.BLUETOOTH) {
-            // Antes de continuar, aquí se debería enviar el movimiento por Bluetooth y
-            // esperar a que el otro jugador lo valide/reciba.
-            // Para la demo, continuaremos con la lógica local por ahora.
+            // Lógica de Bluetooth
         }
-        // ------------------------------------------
 
         if (!canFlip || card.isFaceUp || card.isMatched) return
 
@@ -168,6 +195,10 @@ class MemoryGameViewModel @Inject constructor(
         val firstCard = firstSelectedCard
         val secondCard = secondSelectedCard
 
+        var newScore = currentState.score
+        var newMatchStreak = currentState.matchStreak
+        var newMoveHistory = currentState.moveHistory
+
         if (firstCard != null && secondCard != null && firstCard.value == secondCard.value) {
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard.id }
@@ -176,11 +207,21 @@ class MemoryGameViewModel @Inject constructor(
             updatedCards[secondIndex] = secondCard.copy(isMatched = true)
 
             val newMatchedPairs = currentState.matchedPairs + 1
-            val gameCompleted = newMatchedPairs == 15
+            val gameCompleted = newMatchedPairs == currentState.difficulty.pairs
 
-            // --- MODIFICAR ESTO ---
+            // --- LÓGICA DE PUNTUACIÓN Y RACHA ---
+            newMatchStreak += 1
+            // Puntuación: 100 * 2^(racha - 1)
+            val points = 100 * (1 shl (newMatchStreak - 1))
+            newScore += points
+            // ------------------------------------
+
+            // --- ACTUALIZAR HISTORIAL DE MOVIMIENTOS ---
+            newMoveHistory = newMoveHistory + Move(firstCard.id, secondCard.id) // CORREGIDO: Usar Move
+            // --------------------------------------------
+
             if (gameCompleted) {
-                timerJob?.cancel() // Detiene el timer
+                timerJob?.cancel()
                 if (currentGameMode == GameMode.BLUETOOTH) {
                     // Lógica para declarar al ganador y terminar la conexión
                 }
@@ -189,10 +230,12 @@ class MemoryGameViewModel @Inject constructor(
             _gameState.value = currentState.copy(
                 cards = updatedCards,
                 matchedPairs = newMatchedPairs,
+                score = newScore,
+                matchStreak = newMatchStreak,
+                moveHistory = newMoveHistory,
                 gameCompleted = gameCompleted,
-                isTimerRunning = !gameCompleted // Actualiza el estado del timer
+                isTimerRunning = !gameCompleted
             )
-            // --- FIN DE MODIFICACIÓN ---
 
             if (currentGameMode == GameMode.BLUETOOTH) {
                 // Lógica de "turno extra" o "pasar turno" para Bluetooth
@@ -208,7 +251,14 @@ class MemoryGameViewModel @Inject constructor(
                 updatedCards[secondIndex] = updatedCards[secondIndex].copy(isFaceUp = false)
             }
 
-            _gameState.value = currentState.copy(cards = updatedCards)
+            // --- LÓGICA DE RACHA: Reiniciar si no hay match ---
+            newMatchStreak = 0
+            // --------------------------------------------------
+
+            _gameState.value = currentState.copy(
+                cards = updatedCards,
+                matchStreak = newMatchStreak
+            )
 
             if (currentGameMode == GameMode.BLUETOOTH) {
                 // Lógica de "pasar turno"
@@ -218,5 +268,51 @@ class MemoryGameViewModel @Inject constructor(
         firstSelectedCard = null
         secondSelectedCard = null
         canFlip = true
+    }
+
+    // --- NUEVOS MÉTODOS PARA GUARDAR/CARGAR MANUALMENTE ---
+
+    fun showSaveDialog(show: Boolean) {
+        _gameUiState.update { it.copy(showSaveDialog = show) }
+    }
+
+    fun showLoadDialog(show: Boolean) {
+        _gameUiState.update { it.copy(showLoadDialog = show) }
+        if (show) {
+            viewModelScope.launch {
+                val files = repository.getAvailableSaveFiles()
+                _gameUiState.update { it.copy(saveFiles = files) }
+            }
+        }
+    }
+
+    fun saveGame(format: SaveFormat) {
+        viewModelScope.launch {
+            // Usa un nombre de archivo dinámico o fijo con fecha/hora
+            val filename = "memorama_save" + System.currentTimeMillis() / 1000
+            repository.saveGameManual(_gameState.value, format, filename)
+            showSaveDialog(false)
+        }
+    }
+
+    fun loadGame(filename: String, format: SaveFormat) {
+        viewModelScope.launch {
+            val loadedState = repository.loadGameManual(filename, format)
+            if (loadedState != null) {
+                timerJob?.cancel()
+                _gameState.value = loadedState
+                currentGameDifficulty = loadedState.difficulty // Cargar la dificultad del guardado
+
+                // Si se carga un juego incompleto, se debe iniciar el timer si estaba activo
+                if (loadedState.isTimerRunning && !loadedState.gameCompleted) {
+                    startTimer()
+                } else if (!loadedState.isTimerRunning && !loadedState.gameCompleted) {
+                    // Asegurar que el juego pueda reanudarse
+                    _gameState.update { it.copy(isTimerRunning = false) }
+                }
+
+            }
+            showLoadDialog(false)
+        }
     }
 }

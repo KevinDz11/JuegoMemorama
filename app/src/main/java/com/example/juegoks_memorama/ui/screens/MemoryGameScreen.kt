@@ -40,12 +40,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.juegoks_memorama.viewmodel.MemoryGameViewModel
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.core.spring
+import com.example.juegoks_memorama.model.Difficulty
 import com.example.juegoks_memorama.model.GameMode
+import com.example.juegoks_memorama.model.SaveFormat
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @Composable
 private fun formatTime(seconds: Long): String {
@@ -53,17 +55,40 @@ private fun formatTime(seconds: Long): String {
     val remainingSeconds = seconds % 60
     return "%02d:%02d".format(minutes, remainingSeconds)
 }
+
 @Composable
 fun MemoryGameScreen(
     gameMode: GameMode,
+    initialDifficulty: Difficulty, // Nuevo parámetro
     onExitGame: () -> Unit,
     viewModel: MemoryGameViewModel = hiltViewModel()
 ) {
-    // CORRECCIÓN: Cambiar collectAsState() por collectAsStateWithLifecycle()
     val gameState by viewModel.gameState.collectAsStateWithLifecycle()
+    val uiState by viewModel.gameUiState.collectAsStateWithLifecycle() // Nuevo estado UI
+    val scope = rememberCoroutineScope() // Necesario para efectos visuales/sonoros (si se implementan)
 
-    LaunchedEffect(gameMode) {
-        viewModel.setGameMode(gameMode)
+    // Nota: La implementación de retroalimentación sonora con MediaPlayer requiere
+    // añadir el archivo de sonido a res/raw y usar el contexto. Aquí se mantiene como mockup.
+    val playMatchSound = {}
+    val playNoMatchSound = {}
+
+    // Detección de match para feedback visual/sonoro
+    LaunchedEffect(gameState.matchedPairs, gameState.moves) {
+        if (gameState.moves > 0) {
+            // Si la racha es > 0, es un match
+            if (gameState.matchStreak > 0) {
+                // playMatchSound()
+            } else if (gameState.cards.none { it.isFaceUp && !it.isMatched }) {
+                // Si no hay cartas volteadas y la racha es 0, implica un no-match reciente
+                // playNoMatchSound()
+            }
+        }
+    }
+
+
+    LaunchedEffect(initialDifficulty) {
+        // Asegura que el ViewModel cargue la dificultad seleccionada
+        viewModel.setDifficulty(initialDifficulty)
     }
 
     Column(
@@ -73,7 +98,7 @@ fun MemoryGameScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = if (gameMode == GameMode.SINGLE_PLAYER) "Modo: Un Jugador" else "Modo: Multijugador (Bluetooth)",
+            text = if (gameMode == GameMode.SINGLE_PLAYER) "Modo: Un Jugador (${gameState.difficulty.name})" else "Modo: Multijugador (Bluetooth)",
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 8.dp)
         )
@@ -81,9 +106,13 @@ fun MemoryGameScreen(
         GameHeader(
             moves = gameState.moves,
             matchedPairs = gameState.matchedPairs,
+            score = gameState.score, // Pasar la puntuación
             elapsedTime = gameState.elapsedTimeInSeconds,
+            maxPairs = gameState.difficulty.pairs, // Pasar el máximo de pares
             onNewGame = { viewModel.startNewGame() },
-            onExitGame = onExitGame
+            onExitGame = onExitGame,
+            onShowSaveDialog = { viewModel.showSaveDialog(true) }, // Nuevo
+            onShowLoadDialog = { viewModel.showLoadDialog(true) } // Nuevo
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -99,13 +128,35 @@ fun MemoryGameScreen(
 
         CardGrid(
             cards = gameState.cards,
+            columns = gameState.difficulty.columns, // Usar columnas de la dificultad
             onCardClick = { card -> viewModel.onCardClick(card) }
         )
 
         if (gameState.gameCompleted) {
             GameCompletedDialog(
                 moves = gameState.moves,
+                score = gameState.score, // Mostrar puntuación final
                 onPlayAgain = { viewModel.startNewGame() }
+            )
+        }
+
+        // --- DIÁLOGOS DE GUARDADO/CARGA ---
+        if (uiState.showSaveDialog) {
+            SaveGameDialog(
+                onSave = { format ->
+                    scope.launch { viewModel.saveGame(format) }
+                },
+                onDismiss = { viewModel.showSaveDialog(false) }
+            )
+        }
+
+        if (uiState.showLoadDialog) {
+            LoadGameDialog(
+                saveFiles = uiState.saveFiles,
+                onLoad = { filename, format ->
+                    scope.launch { viewModel.loadGame(filename, format) }
+                },
+                onDismiss = { viewModel.showLoadDialog(false) }
             )
         }
     }
@@ -115,9 +166,13 @@ fun MemoryGameScreen(
 fun GameHeader(
     moves: Int,
     matchedPairs: Int,
+    score: Int, // Nuevo parámetro
     elapsedTime: Long,
+    maxPairs: Int, // Nuevo parámetro
     onNewGame: () -> Unit,
-    onExitGame: () -> Unit
+    onExitGame: () -> Unit,
+    onShowSaveDialog: () -> Unit,
+    onShowLoadDialog: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -128,11 +183,16 @@ fun GameHeader(
     ) {
         Column {
             Text(
+                text = "Puntuación: $score", // Mostrar Puntuación
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
                 text = "Movimientos: $moves",
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                text = "Parejas: $matchedPairs/15",
+                text = "Parejas: $matchedPairs/$maxPairs",
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
@@ -146,6 +206,11 @@ fun GameHeader(
                 Text("Nuevo Juego")
             }
             Spacer(modifier = Modifier.height(8.dp))
+            Row {
+                Button(onClick = onShowSaveDialog, modifier = Modifier.padding(end = 8.dp)) { Text("Guardar") }
+                Button(onClick = onShowLoadDialog) { Text("Cargar") }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Button(onClick = onExitGame) {
                 Text("Salir")
             }
@@ -156,10 +221,11 @@ fun GameHeader(
 @Composable
 fun CardGrid(
     cards: List<com.example.juegoks_memorama.model.Card>,
+    columns: Int, // Nuevo parámetro
     onCardClick: (com.example.juegoks_memorama.model.Card) -> Unit
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(5),
+        columns = GridCells.Fixed(columns), // Usar columnas dinámicamente
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -180,10 +246,10 @@ fun MemoryCard(
 ) {
     val rotation = remember { Animatable(0f) }
     var isFaceUp by remember { mutableStateOf(card.isFaceUp) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(card.isFaceUp) {
         if (card.isFaceUp != isFaceUp) {
+            // Animación de rotación para voltear
             if (card.isFaceUp) {
                 rotation.animateTo(180f, animationSpec = tween(500))
             } else {
@@ -193,16 +259,21 @@ fun MemoryCard(
         }
     }
 
+    // --- EFECTO VISUAL: Escala a 0 para "desaparecer" al matchear ---
     val animateScale by animateFloatAsState(
-        targetValue = if (card.isMatched) 0.9f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (card.isMatched) 0.0f else 1f, // Escala a 0 al matchear
+        animationSpec = if (card.isMatched) {
+            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
+        } else {
+            spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+        },
         label = "scale"
     )
 
     Box(
         modifier = Modifier
             .aspectRatio(0.75f)
-            .scale(animateScale)
+            .scale(animateScale) // Aplicar el efecto de escala
     ) {
         Card(
             modifier = Modifier
@@ -250,16 +321,105 @@ fun MemoryCard(
 @Composable
 fun GameCompletedDialog(
     moves: Int,
+    score: Int, // Nuevo parámetro
     onPlayAgain: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = { },
         title = { Text("¡Felicidades!") },
-        text = { Text("Completaste el juego en $moves movimientos") },
+        text = {
+            Column {
+                Text("Completaste el juego en $moves movimientos.")
+                Text("Puntuación Final: $score puntos.") // Mostrar puntuación
+            }
+        },
         confirmButton = {
             Button(onClick = onPlayAgain) {
                 Text("Jugar de nuevo")
             }
+        }
+    )
+}
+
+// --- NUEVO: Diálogo para Guardar Partida ---
+@Composable
+fun SaveGameDialog(
+    onSave: (SaveFormat) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedFormat by remember { mutableStateOf(SaveFormat.JSON) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Guardar Partida") },
+        text = {
+            Column {
+                Text("Selecciona el formato de guardado:")
+                Spacer(modifier = Modifier.height(16.dp))
+                SaveFormat.entries.forEach { format ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedFormat = format }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "${if (selectedFormat == format) "●" else "○"} ${format.name} (.${format.name.lowercase()})")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(selectedFormat) }) { Text("Guardar") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+// --- NUEVO: Diálogo para Cargar Partida ---
+@Composable
+fun LoadGameDialog(
+    saveFiles: List<Pair<String, SaveFormat>>,
+    onLoad: (String, SaveFormat) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedFile by remember { mutableStateOf<Pair<String, SaveFormat>?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cargar Partida") },
+        text = {
+            Column {
+                Text("Selecciona un archivo para cargar:")
+                Spacer(modifier = Modifier.height(16.dp))
+                if (saveFiles.isEmpty()) {
+                    Text("No hay partidas guardadas.")
+                } else {
+                    saveFiles.forEach { file ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedFile = file }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val displayText = "${file.first} (${file.second.name})"
+                            Text(text = "${if (selectedFile == file) "●" else "○"} $displayText")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { selectedFile?.let { onLoad(it.first, it.second) } },
+                enabled = selectedFile != null
+            ) { Text("Cargar") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancelar") }
         }
     )
 }

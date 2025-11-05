@@ -11,43 +11,63 @@ import androidx.compose.runtime.mutableStateOf // Importar para mutableStateOf
 import androidx.compose.runtime.remember // Importar para remember
 import androidx.compose.runtime.setValue // Importar para el delegado 'by'
 import androidx.compose.ui.Modifier
-import com.example.juegoks_memorama.model.GameMode // Importar nuevo enum
+import com.example.juegoks_memorama.model.Difficulty
+import com.example.juegoks_memorama.model.GameMode
+import com.example.juegoks_memorama.ui.screens.DifficultySelectionScreen
 import com.example.juegoks_memorama.ui.screens.MemoryGameScreen
-import com.example.juegoks_memorama.ui.screens.ModeSelectionScreen // Importar nueva pantalla
-import com.example.juegoks_memorama.ui.theme.MemoryGameTheme//import com.example.memorygame.ui.theme.MemoryGameTheme
+import com.example.juegoks_memorama.ui.screens.ModeSelectionScreen
+import com.example.juegoks_memorama.ui.theme.MemoryGameTheme
 import dagger.hilt.android.AndroidEntryPoint
+
+// --- NUEVO ESTADO DE NAVEGACIÓN ---
+sealed class Screen {
+    object ModeSelection : Screen()
+    data class DifficultySelection(val mode: GameMode) : Screen()
+    data class Game(val mode: GameMode, val difficulty: Difficulty?) : Screen()
+}
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // --- CAMBIO: Estado para manejar la navegación entre pantallas/modos ---
-            var selectedMode by remember { mutableStateOf<GameMode?>(null) }
+            var currentScreen by remember { mutableStateOf<Screen>(Screen.ModeSelection) }
 
             MemoryGameTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    when (selectedMode) {
-                        null -> {
+                    when (val screen = currentScreen) {
+                        is Screen.ModeSelection -> {
                             ModeSelectionScreen(
                                 onModeSelected = { mode ->
-                                    selectedMode = mode
+                                    if (mode == GameMode.SINGLE_PLAYER) {
+                                        // Ir a selección de dificultad para un jugador
+                                        currentScreen = Screen.DifficultySelection(mode)
+                                    } else {
+                                        // Para Bluetooth, asumir dificultad media por ahora
+                                        currentScreen = Screen.Game(mode, Difficulty.MEDIUM)
+                                    }
                                 }
                             )
                         }
-                        GameMode.SINGLE_PLAYER -> {
-                            MemoryGameScreen(
-                                gameMode = GameMode.SINGLE_PLAYER,
-                                onExitGame = { selectedMode = null } // Al salir vuelve a la selección
+                        is Screen.DifficultySelection -> {
+                            DifficultySelectionScreen(
+                                onDifficultySelected = { difficulty ->
+                                    currentScreen = Screen.Game(screen.mode, difficulty)
+                                },
+                                onBack = {
+                                    currentScreen = Screen.ModeSelection
+                                }
                             )
                         }
-                        GameMode.BLUETOOTH -> {
+                        is Screen.Game -> {
+                            val difficulty = screen.difficulty ?: Difficulty.MEDIUM
                             MemoryGameScreen(
-                                gameMode = GameMode.BLUETOOTH,
-                                onExitGame = { selectedMode = null } // Al salir vuelve a la selección
+                                gameMode = screen.mode,
+                                initialDifficulty = difficulty,
+                                onExitGame = { currentScreen = Screen.ModeSelection } // Al salir vuelve a la selección
                             )
                         }
                     }
