@@ -1,12 +1,21 @@
 package com.example.juegoks_memorama.di
 
+import android.content.Context
+import com.example.juegoks_memorama.data.SoundPlayer
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.components.ViewModelComponent
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
 
 @Module
-@InstallIn(ViewModelComponent::class)
+@InstallIn(SingletonComponent::class)
 object AppModule {
-    // Puedes añadir dependencias aquí si las necesitas
+    @Provides
+    @Singleton
+    fun provideSoundPlayer(@ApplicationContext context: Context): SoundPlayer {
+        return SoundPlayer(context)
+    }
 }

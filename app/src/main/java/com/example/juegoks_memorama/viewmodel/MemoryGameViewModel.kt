@@ -3,8 +3,8 @@ package com.example.juegoks_memorama.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.juegoks_memorama.data.GameRepository
-import com.example.juegoks_memorama.model.Card //import com.example.memorygame.model.Card
-import com.example.juegoks_memorama.model.GameMode // --- CAMBIO: Importar GameMode
+import com.example.juegoks_memorama.model.Card
+import com.example.juegoks_memorama.model.GameMode
 import com.example.juegoks_memorama.model.GameState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -13,38 +13,38 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.update // <--- AÑADIR IMPORT
-import kotlinx.coroutines.isActive // <--- AÑADIR IMPORT
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import com.example.juegoks_memorama.model.Difficulty // Importar
-import com.example.juegoks_memorama.model.SaveFormat // Importar
+import com.example.juegoks_memorama.model.Difficulty
+import com.example.juegoks_memorama.model.SaveFormat
 import com.example.juegoks_memorama.model.Move
 import com.example.juegoks_memorama.model.GameHistoryItem
-import com.example.juegoks_memorama.data.SaveFormatSerializer // Importar
+import com.example.juegoks_memorama.data.SaveFormatSerializer
+import com.example.juegoks_memorama.data.SoundPlayer // <-- AÑADIR
 
 data class GameUiState(
     val showSaveDialog: Boolean = false,
-    val showHistoryDialog: Boolean = false, // CAMBIO: showLoadDialog -> showHistoryDialog
-    val historyItems: List<GameHistoryItem> = emptyList(), // CAMBIO: saveFiles -> historyItems
+    val showHistoryDialog: Boolean = false,
+    val historyItems: List<GameHistoryItem> = emptyList(),
 
-    // --- NUEVOS ESTADOS PARA DIÁLOGOS POST-GUARDADO ---
-    val showPostSaveDialog: Boolean = false, // Diálogo después de guardar (en curso)
-    val showPostWinSaveDialog: Boolean = false, // Diálogo después de guardar (partida ganada)
+    val showPostSaveDialog: Boolean = false,
+    val showPostWinSaveDialog: Boolean = false,
 
-    // --- NUEVO: Para validación de nombres de archivo ---
     val existingSaveNames: List<String> = emptyList()
 )
 
 @HiltViewModel
 class MemoryGameViewModel @Inject constructor(
-    private val repository: GameRepository
+    private val repository: GameRepository,
+    private val soundPlayer: SoundPlayer // <-- AÑADIR (Inyectar)
 ) : ViewModel() {
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState = _gameState.asStateFlow()
 
-    private val _gameUiState = MutableStateFlow(GameUiState()) // Nuevo StateFlow para la UI
+    private val _gameUiState = MutableStateFlow(GameUiState())
     val gameUiState = _gameUiState.asStateFlow()
 
     private var firstSelectedCard: Card? = null
@@ -52,15 +52,13 @@ class MemoryGameViewModel @Inject constructor(
     private var canFlip = true
     private var timerJob: Job? = null
     private var currentGameMode: GameMode = GameMode.SINGLE_PLAYER
-    private var currentGameDifficulty: Difficulty = Difficulty.MEDIUM // Nuevo campo para la dificultad
+    private var currentGameDifficulty: Difficulty = Difficulty.MEDIUM
 
-    // --- NUEVO: Rastrear el archivo cargado para sobrescribir ---
     private var loadedSaveFile: Pair<String, SaveFormat>? = null
 
     init {
         viewModelScope.launch {
             try {
-                // CORRECCIÓN DE CRASH: Intentar cargar la partida guardada
                 val savedGame = repository.savedGameState.firstOrNull()
                 if (savedGame != null && !savedGame.gameCompleted) {
                     _gameState.value = savedGame
@@ -71,22 +69,17 @@ class MemoryGameViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                // Si el JSON es incompatible (modelo de datos antiguo), limpiamos el guardado
-                // para evitar futuros crasheos y forzar un estado limpio.
                 repository.clearGameState()
             }
         }
     }
 
-    // --- NUEVO: Establecer Dificultad ---
     fun setDifficulty(difficulty: Difficulty) {
-        // Corrección: Asegura que el juego se inicie si la dificultad es diferente o si es la primera carga.
         if (currentGameDifficulty != difficulty || _gameState.value.cards.isEmpty()) {
             currentGameDifficulty = difficulty
             startNewGame(difficulty = difficulty)
         }
     }
-    // ------------------------------------
 
     fun setGameMode(mode: GameMode) {
         if (currentGameMode != mode) {
@@ -94,7 +87,6 @@ class MemoryGameViewModel @Inject constructor(
             if (mode == GameMode.SINGLE_PLAYER) {
                 startNewGame(difficulty = currentGameDifficulty)
             } else {
-                // Para Bluetooth, se usa la dificultad media por defecto
                 startNewGame(difficulty = Difficulty.MEDIUM)
             }
         } else if (_gameState.value.cards.isEmpty()) {
@@ -115,11 +107,10 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
-    // --- MODIFICADO: Aceptar Dificultad como parámetro ---
     fun startNewGame(difficulty: Difficulty = currentGameDifficulty) {
         timerJob?.cancel()
         currentGameDifficulty = difficulty
-        loadedSaveFile = null // <-- NUEVO: Reiniciar al empezar nuevo juego
+        loadedSaveFile = null
 
         val maxPairs = difficulty.pairs
         val cardValues = (1..maxPairs).flatMap { listOf(it, it) }.shuffled()
@@ -170,6 +161,7 @@ class MemoryGameViewModel @Inject constructor(
 
         if (!canFlip || card.isFaceUp || card.isMatched) return
 
+        soundPlayer.playFlipSound() // <-- AÑADIR SONIDO DE VOLTEAR
         startTimer()
 
         val currentState = _gameState.value
@@ -211,6 +203,8 @@ class MemoryGameViewModel @Inject constructor(
         var newMoveHistory = currentState.moveHistory
 
         if (firstCard != null && secondCard != null && firstCard.value == secondCard.value) {
+            soundPlayer.playMatchSound() // <-- AÑADIR SONIDO DE ACIERTO
+
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard.id }
 
@@ -220,18 +214,14 @@ class MemoryGameViewModel @Inject constructor(
             val newMatchedPairs = currentState.matchedPairs + 1
             val gameCompleted = newMatchedPairs == currentState.difficulty.pairs
 
-            // --- LÓGICA DE PUNTUACIÓN Y RACHA ---
             newMatchStreak += 1
-            // Puntuación: 100 * 2^(racha - 1)
             val points = 100 * (1 shl (newMatchStreak - 1))
             newScore += points
-            // ------------------------------------
 
-            // --- ACTUALIZAR HISTORIAL DE MOVIMIENTOS ---
-            newMoveHistory = newMoveHistory + Move(firstCard.id, secondCard.id) // CORREGIDO: Usar Move
-            // --------------------------------------------
+            newMoveHistory = newMoveHistory + Move(firstCard.id, secondCard.id)
 
             if (gameCompleted) {
+                soundPlayer.playWinSound() // <-- AÑADIR SONIDO DE VICTORIA
                 timerJob?.cancel()
                 if (currentGameMode == GameMode.BLUETOOTH) {
                     // Lógica para declarar al ganador y terminar la conexión
@@ -252,6 +242,8 @@ class MemoryGameViewModel @Inject constructor(
                 // Lógica de "turno extra" o "pasar turno" para Bluetooth
             }
         } else {
+            soundPlayer.playNoMatchSound() // <-- AÑADIR SONIDO DE FALLO
+
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard?.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard?.id }
 
@@ -262,9 +254,7 @@ class MemoryGameViewModel @Inject constructor(
                 updatedCards[secondIndex] = updatedCards[secondIndex].copy(isFaceUp = false)
             }
 
-            // --- LÓGICA DE RACHA: Reiniciar si no hay match ---
             newMatchStreak = 0
-            // --------------------------------------------------
 
             _gameState.value = currentState.copy(
                 cards = updatedCards,
@@ -287,22 +277,17 @@ class MemoryGameViewModel @Inject constructor(
         _gameUiState.update { it.copy(showSaveDialog = show) }
     }
 
-    // CAMBIO: Renombrado y lógica nueva
     fun showHistoryDialog(show: Boolean) {
         _gameUiState.update { it.copy(showHistoryDialog = show) }
         if (show) {
             viewModelScope.launch {
-                // Obtenemos los nombres de archivo, formato y timestamp
                 val files = repository.getAvailableSaveFiles()
-                val currentDifficulty = _gameState.value.difficulty // Dificultad actual
+                val currentDifficulty = _gameState.value.difficulty
 
-                // Cargamos el estado de CADA archivo para clasificarlo
                 val historyList = files.mapNotNull { (filename, format, timestamp) ->
                     val loadedState = repository.loadGameManual(filename, format)
 
-                    // --- REQ: FILTRAR POR DIFICULTAD ---
                     if (loadedState != null && loadedState.difficulty == currentDifficulty) {
-                        // Usamos el 'filename' con extensión
                         GameHistoryItem(filename, format, loadedState, timestamp)
                     } else {
                         null
@@ -314,19 +299,13 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
-    // --- NUEVO: Lógica para decidir si sobrescribir o "Guardar como" ---
     fun onSaveClick() {
         viewModelScope.launch {
             if (loadedSaveFile != null) {
-                // Sobrescribir: Guardar directamente con el nombre y formato ya conocidos
-                // El nombre en loadedSaveFile NO tiene extensión
                 saveGame(loadedSaveFile!!.first, loadedSaveFile!!.second)
             } else {
-                // Guardar como:
-                // 1. Obtener todos los nombres existentes (sin extensión)
                 val allNames = repository.getAllSaveFileNames()
 
-                // 2. Actualizar el state con los nombres y mostrar el diálogo
                 _gameUiState.update {
                     it.copy(
                         existingSaveNames = allNames,
@@ -337,52 +316,40 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
-    // CAMBIO: Convertido a suspend fun y muestra el diálogo post-guardado
     suspend fun saveGame(filename: String, format: SaveFormat) {
         val stateToSave = _gameState.value
-        // Guardamos usando el nombre de archivo SIN extensión
         repository.saveGameManual(stateToSave, format, filename)
 
-        // Guardar el archivo que acabamos de usar (sin extensión)
         loadedSaveFile = filename to format
 
-        // Mostrar el diálogo post-guardado correcto
         if (stateToSave.gameCompleted) {
-            // REQ: Mostrar diálogo de "Jugar de nuevo" o "Salir"
             _gameUiState.update { it.copy(showSaveDialog = false, showPostWinSaveDialog = true) }
         } else {
-            // REQ: Mostrar diálogo de "Continuar", "Nuevo" o "Salir"
             _gameUiState.update { it.copy(showSaveDialog = false, showPostSaveDialog = true) }
         }
     }
 
-    // CAMBIO: Renombrado y guarda el archivo cargado
     fun loadGameFromHistory(filename: String, format: SaveFormat) {
         viewModelScope.launch {
-            // 'filename' aquí SÍ tiene extensión (ej: "partida1.json")
             val loadedState = repository.loadGameManual(filename, format)
             if (loadedState != null) {
                 timerJob?.cancel()
                 _gameState.value = loadedState
-                currentGameDifficulty = loadedState.difficulty // Cargar la dificultad del guardado
+                currentGameDifficulty = loadedState.difficulty
 
-                // --- NUEVO: Guardar referencia al archivo cargado (SIN extensión) ---
                 val filenameWithoutExtension = filename.substringBeforeLast('.')
                 loadedSaveFile = filenameWithoutExtension to format
 
-                // Si se carga un juego incompleto, se debe iniciar el timer si estaba activo
                 if (loadedState.isTimerRunning && !loadedState.gameCompleted) {
                     startTimer()
                 } else if (!loadedState.isTimerRunning && !loadedState.gameCompleted) {
-                    // Asegurar que el juego pueda reanudarse
                     _gameState.update { it.copy(isTimerRunning = false) }
                 }
             }
-            showHistoryDialog(false) // Cierra el diálogo de historial
+            showHistoryDialog(false)
         }
     }
 
-    // --- NUEVO: Funciones para cerrar los diálogos post-guardado ---
     fun dismissPostSaveDialog() {
         _gameUiState.update { it.copy(showPostSaveDialog = false) }
     }

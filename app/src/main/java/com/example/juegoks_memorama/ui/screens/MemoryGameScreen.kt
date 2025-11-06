@@ -1,6 +1,6 @@
-// ruta: app/src/main/java/com/example/juegoks_memorama/ui/screens/MemoryGameScreen.kt
 package com.example.juegoks_memorama.ui.screens
 
+import android.view.SoundEffectConstants // <-- AÑADIR
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,7 +55,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
-// --- IMPORTS AÑADIDOS ---
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Color
@@ -63,6 +62,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalView // <-- AÑADIR
 
 @Composable
 private fun formatTime(seconds: Long): String {
@@ -71,7 +71,6 @@ private fun formatTime(seconds: Long): String {
     return "%02d:%02d".format(minutes, remainingSeconds)
 }
 
-// --- NUEVO: Función para formatear fecha y hora ---
 @Composable
 private fun formatTimestamp(timestamp: Long): String {
     val sdf = remember { SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()) }
@@ -81,42 +80,22 @@ private fun formatTimestamp(timestamp: Long): String {
 @Composable
 fun MemoryGameScreen(
     gameMode: GameMode,
-    initialDifficulty: Difficulty, // Nuevo parámetro
+    initialDifficulty: Difficulty,
     onExitGame: () -> Unit,
     viewModel: MemoryGameViewModel = hiltViewModel()
 ) {
     val gameState by viewModel.gameState.collectAsStateWithLifecycle()
-    val uiState by viewModel.gameUiState.collectAsStateWithLifecycle() // Nuevo estado UI
-    val scope = rememberCoroutineScope() // Necesario para efectos visuales/sonoros (si se implementan)
-
-    // Nota: La implementación de retroalimentación sonora con MediaPlayer requiere
-    // añadir el archivo de sonido a res/raw y usar el contexto. Aquí se mantiene como mockup.
-    val playMatchSound = {}
-    val playNoMatchSound = {}
-
-    // Detección de match para feedback visual/sonoro
-    LaunchedEffect(gameState.matchedPairs, gameState.moves) {
-        if (gameState.moves > 0) {
-            // Si la racha es > 0, es un match
-            if (gameState.matchStreak > 0) {
-                // playMatchSound()
-            } else if (gameState.cards.none { it.isFaceUp && !it.isMatched }) {
-                // Si no hay cartas volteadas y la racha es 0, implica un no-match reciente
-                // playNoMatchSound()
-            }
-        }
-    }
-
+    val uiState by viewModel.gameUiState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(initialDifficulty) {
-        // Asegura que el ViewModel cargue la dificultad seleccionada
         viewModel.setDifficulty(initialDifficulty)
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding() // <-- REQ 4: Añadir padding para la barra de estado
+            .statusBarsPadding()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -129,12 +108,12 @@ fun MemoryGameScreen(
         GameHeader(
             moves = gameState.moves,
             matchedPairs = gameState.matchedPairs,
-            score = gameState.score, // Pasar la puntuación
+            score = gameState.score,
             elapsedTime = gameState.elapsedTimeInSeconds,
-            maxPairs = gameState.difficulty.pairs, // Pasar el máximo de pares
+            maxPairs = gameState.difficulty.pairs,
             onNewGame = { viewModel.startNewGame() },
             onExitGame = onExitGame,
-            onSaveClick = { viewModel.onSaveClick() }, // <-- CAMBIO: Llama a onSaveClick
+            onSaveClick = { viewModel.onSaveClick() },
             onShowHistoryDialog = { viewModel.showHistoryDialog(true) }
         )
 
@@ -147,38 +126,38 @@ fun MemoryGameScreen(
                 color = MaterialTheme.colorScheme.error
             )
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        //Spacer(modifier = Modifier.height(16.dp)) // <- QUITAR ESTE SPACER
 
         CardGrid(
             cards = gameState.cards,
-            columns = gameState.difficulty.columns, // Usar columnas de la dificultad
+            columns = gameState.difficulty.columns,
             onCardClick = { card -> viewModel.onCardClick(card) },
-            modifier = Modifier.weight(1f) // NUEVO: Para responsividad
+
+            // --- REQ 1: ESTA ES LA SOLUCIÓN AL SCROLL ---
+            // Le dice al grid que ocupe todo el espacio sobrante
+            modifier = Modifier.weight(1f)
         )
 
         if (gameState.gameCompleted) {
             GameCompletedDialog(
                 moves = gameState.moves,
-                score = gameState.score, // Mostrar puntuación final
+                score = gameState.score,
                 onPlayAgain = { viewModel.startNewGame() },
-                onSaveResult = { viewModel.onSaveClick() }, // <-- CAMBIO: Llama a onSaveClick
+                onSaveResult = { viewModel.onSaveClick() },
                 onExit = onExitGame
             )
         }
 
-        // --- DIÁLOGOS DE GUARDADO/CARGA ---
         if (uiState.showSaveDialog) {
             SaveGameDialog(
-                // --- NUEVO: Pasar la lista de nombres para validación ---
                 existingSaveNames = uiState.existingSaveNames,
-                onSave = { filename, format -> // CAMBIO
-                    scope.launch { viewModel.saveGame(filename, format) } // CAMBIO
+                onSave = { filename, format ->
+                    scope.launch { viewModel.saveGame(filename, format) }
                 },
                 onDismiss = { viewModel.showSaveDialog(false) }
             )
         }
 
-        // CAMBIO: Cargar el nuevo Diálogo de Historial
         if (uiState.showHistoryDialog) {
             HistoryDialog(
                 historyItems = uiState.historyItems,
@@ -189,7 +168,6 @@ fun MemoryGameScreen(
             )
         }
 
-        // --- REQ 1 & 2: Diálogo Post-Guardado (En curso) ---
         if (uiState.showPostSaveDialog) {
             PostSaveDialog(
                 onContinue = { viewModel.dismissPostSaveDialog() },
@@ -204,7 +182,6 @@ fun MemoryGameScreen(
             )
         }
 
-        // --- REQ 7: Diálogo Post-Guardado (Partida Ganada) ---
         if (uiState.showPostWinSaveDialog) {
             PostWinSaveDialog(
                 onNewGame = {
@@ -220,17 +197,16 @@ fun MemoryGameScreen(
     }
 }
 
-// --- NUEVO: Helper Composable para las estadísticas ---
 @Composable
 private fun StatItem(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.padding(horizontal = 4.dp) // Añadir padding
+        modifier = modifier.padding(horizontal = 4.dp)
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant // Color más sutil
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
             text = value,
@@ -252,7 +228,9 @@ fun GameHeader(
     onSaveClick: () -> Unit,
     onShowHistoryDialog: () -> Unit
 ) {
-    // --- REQ: Layout de Header rediseñado (Arreglo) ---
+    // --- AÑADIR: Obtener la vista actual para reproducir sonidos ---
+    val view = LocalView.current
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -262,7 +240,7 @@ fun GameHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround // Distribuye el espacio
+            horizontalArrangement = Arrangement.SpaceAround
         ) {
             StatItem(label = "Puntuación", value = "$score")
             StatItem(label = "Movimientos", value = "$moves")
@@ -270,26 +248,40 @@ fun GameHeader(
             StatItem(label = "Tiempo", value = formatTime(elapsedTime))
         }
 
-        Spacer(Modifier.height(16.dp)) // Espacio entre stats y botones
+        Spacer(Modifier.height(16.dp))
 
         // --- Fila 1 de Botones ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
         ) {
-            Button(onClick = onNewGame) { Text("🔄 Nuevo") }
-            Button(onClick = onSaveClick) { Text("💾 Guardar") }
+            Button(onClick = {
+                view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                onNewGame()
+            }) { Text("🔄 Nuevo") }
+
+            Button(onClick = {
+                view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                onSaveClick()
+            }) { Text("💾 Guardar") }
         }
 
-        Spacer(Modifier.height(8.dp)) // Espacio entre filas de botones
+        Spacer(Modifier.height(8.dp))
 
         // --- Fila 2 de Botones ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
         ) {
-            Button(onClick = onShowHistoryDialog) { Text("📜 Historial") }
-            Button(onClick = onExitGame) { Text("🚪 Salir") }
+            Button(onClick = {
+                view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                onShowHistoryDialog()
+            }) { Text("📜 Historial") }
+
+            Button(onClick = {
+                view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                onExitGame()
+            }) { Text("🚪 Salir") }
         }
     }
 }
@@ -298,13 +290,13 @@ fun GameHeader(
 @Composable
 fun CardGrid(
     cards: List<com.example.juegoks_memorama.model.Card>,
-    columns: Int, // Nuevo parámetro
+    columns: Int,
     onCardClick: (com.example.juegoks_memorama.model.Card) -> Unit,
-    modifier: Modifier = Modifier // AÑADE ESTE PARÁMETRO
+    modifier: Modifier = Modifier
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(columns), // Usar columnas dinámicamente
-        modifier = modifier.fillMaxWidth(), // APLICA EL MODIFICADOR AQUÍ
+        columns = GridCells.Fixed(columns),
+        modifier = modifier.fillMaxWidth(), // <- El 'modifier' (con weight) se aplica aquí
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -327,7 +319,6 @@ fun MemoryCard(
 
     LaunchedEffect(card.isFaceUp) {
         if (card.isFaceUp != isFaceUp) {
-            // Animación de rotación para voltear
             if (card.isFaceUp) {
                 rotation.animateTo(180f, animationSpec = tween(500))
             } else {
@@ -337,9 +328,8 @@ fun MemoryCard(
         }
     }
 
-    // --- EFECTO VISUAL: Escala a 0 para "desaparecer" al matchear ---
     val animateScale by animateFloatAsState(
-        targetValue = if (card.isMatched) 0.0f else 1f, // Escala a 0 al matchear
+        targetValue = if (card.isMatched) 0.0f else 1f,
         animationSpec = if (card.isMatched) {
             spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
         } else {
@@ -351,7 +341,7 @@ fun MemoryCard(
     Box(
         modifier = Modifier
             .aspectRatio(0.75f)
-            .scale(animateScale) // Aplicar el efecto de escala
+            .scale(animateScale)
     ) {
         Card(
             modifier = Modifier
@@ -401,11 +391,14 @@ fun GameCompletedDialog(
     moves: Int,
     score: Int,
     onPlayAgain: () -> Unit,
-    onSaveResult: () -> Unit, // <-- CAMBIO: Renombrado
+    onSaveResult: () -> Unit,
     onExit: () -> Unit
 ) {
+    // --- AÑADIR: Vista para sonidos de botones ---
+    val view = LocalView.current
+
     AlertDialog(
-        onDismissRequest = { onPlayAgain() }, // Jugar de nuevo si toca fuera
+        onDismissRequest = { onPlayAgain() },
         title = { Text("¡Felicidades!") },
         text = {
             Column {
@@ -413,40 +406,45 @@ fun GameCompletedDialog(
                 Text("Puntuación Final: $score puntos.")
             }
         },
-        // --- REQ 6: Layout de diálogo de victoria corregido ---
         confirmButton = {
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onSaveResult) { // CAMBIO
+                Button(onClick = {
+                    view.playSoundEffect(SoundEffectConstants.CLICK)
+                    onSaveResult()
+                }) {
                     Text("💾 Guardar Resultado")
                 }
-                Button(onClick = onPlayAgain) {
+                Button(onClick = {
+                    view.playSoundEffect(SoundEffectConstants.CLICK)
+                    onPlayAgain()
+                }) {
                     Text("🔄 Jugar de nuevo")
                 }
-                Button(onClick = onExit) { // NUEVO
+                Button(onClick = {
+                    view.playSoundEffect(SoundEffectConstants.CLICK)
+                    onExit()
+                }) {
                     Text("🚪 Salir")
                 }
             }
         },
-        dismissButton = { } // Dejar vacío
+        dismissButton = { }
     )
 }
 
-// --- MODIFICADO: Diálogo para Guardar Partida ---
 @Composable
 fun SaveGameDialog(
-    existingSaveNames: List<String>, // <-- NUEVO: Para validación
+    existingSaveNames: List<String>,
     onSave: (String, SaveFormat) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedFormat by remember { mutableStateOf(SaveFormat.JSON) }
     var filename by rememberSaveable { mutableStateOf("") }
 
-    // --- REQ: Lógica de validación ---
     val isBlank = filename.isBlank()
-    // Comprueba si el nombre (ignorando may/min) ya existe en la lista
     val isDuplicate = existingSaveNames.any { it.equals(filename, ignoreCase = true) }
 
     val isError = isBlank || isDuplicate
@@ -464,10 +462,9 @@ fun SaveGameDialog(
                     onValueChange = { filename = it },
                     label = { Text("Nombre de archivo") },
                     singleLine = true,
-                    isError = isError // <-- Aplicar estado de error
+                    isError = isError
                 )
 
-                // --- REQ: Mostrar mensaje de error específico ---
                 if (isBlank) {
                     Text(
                         "El nombre no puede estar vacío",
@@ -501,7 +498,6 @@ fun SaveGameDialog(
         },
         confirmButton = {
             Button(
-                // Deshabilitado si hay error (vacío O duplicado)
                 onClick = { onSave(filename, selectedFormat) },
                 enabled = !isError
             ) { Text("Guardar") }
@@ -513,7 +509,6 @@ fun SaveGameDialog(
 }
 
 
-// --- NUEVO: Diálogo para Historial (Reemplaza a LoadGameDialog) ---
 @Composable
 fun HistoryDialog(
     historyItems: List<GameHistoryItem>,
@@ -521,18 +516,13 @@ fun HistoryDialog(
     onDismiss: () -> Unit
 ) {
     var selectedFile by remember { mutableStateOf<Pair<String, SaveFormat>?>(null) }
-
-    // Particiona la lista en dos: en curso y completadas
     val (completed, inProgress) = historyItems.partition { it.state.gameCompleted }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Historial de Partidas") },
         text = {
-            // Usamos LazyColumn para listas largas
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-
-                // --- SECCIÓN: EN CURSO ---
                 item {
                     Text(
                         text = "Partidas en Curso",
@@ -554,7 +544,6 @@ fun HistoryDialog(
                     }
                 }
 
-                // --- SECCIÓN: COMPLETADAS ---
                 item {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
                     Text(
@@ -571,8 +560,8 @@ fun HistoryDialog(
                         HistoryItemRow(
                             item = item,
                             isFinished = true,
-                            isSelected = false, // No se pueden seleccionar
-                            onSelect = {} // No hacer nada
+                            isSelected = false,
+                            onSelect = {}
                         )
                     }
                 }
@@ -581,7 +570,7 @@ fun HistoryDialog(
         confirmButton = {
             Button(
                 onClick = { selectedFile?.let { onLoad(it.first, it.second) } },
-                enabled = selectedFile != null // Solo habilitado si se selecciona una partida en curso
+                enabled = selectedFile != null
             ) { Text("Cargar") }
         },
         dismissButton = {
@@ -597,13 +586,11 @@ private fun HistoryItemRow(
     isSelected: Boolean,
     onSelect: () -> Unit
 ) {
-    // --- REQ 3: Añadir timestamp ---
-    // 'filename' aquí SÍ tiene extensión
     val (filename, _, state, timestamp) = item
     val formattedTimestamp = formatTimestamp(timestamp)
 
     val modifier = if (isFinished) {
-        Modifier.padding(vertical = 8.dp) // No clickeable
+        Modifier.padding(vertical = 8.dp)
     } else {
         Modifier
             .clickable { onSelect() }
@@ -615,7 +602,6 @@ private fun HistoryItemRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!isFinished) {
-            // Radio button para seleccionar
             Text(
                 text = if (isSelected) "●" else "○",
                 modifier = Modifier.padding(end = 16.dp),
@@ -625,9 +611,7 @@ private fun HistoryItemRow(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            // Mostramos el nombre de archivo SIN extensión para que sea más limpio
             Text(filename.substringBeforeLast('.'), fontWeight = FontWeight.SemiBold)
-            // --- REQ 3: Mostrar fecha y hora ---
             Text(
                 text = formattedTimestamp,
                 style = MaterialTheme.typography.bodySmall,
@@ -635,13 +619,11 @@ private fun HistoryItemRow(
             )
 
             if (isFinished) {
-                // Mostrar estadísticas de partidas terminadas
                 Text(
                     text = "Score: ${state.score} | Mov: ${state.moves} | Tiempo: ${formatTime(state.elapsedTimeInSeconds)}",
                     style = MaterialTheme.typography.bodySmall
                 )
             } else {
-                // Mostrar progreso de partidas en curso
                 Text(
                     text = "Progreso: ${state.matchedPairs}/${state.difficulty.pairs} pares | Mov: ${state.moves}",
                     style = MaterialTheme.typography.bodySmall
@@ -651,15 +633,16 @@ private fun HistoryItemRow(
     }
 }
 
-// --- REQ 1 & 2: Diálogo después de guardar (en curso) ---
 @Composable
 fun PostSaveDialog(
     onContinue: () -> Unit,
     onNewGame: () -> Unit,
     onExit: () -> Unit
 ) {
+    val view = LocalView.current // <-- AÑADIR VISTA
+
     AlertDialog(
-        onDismissRequest = onContinue, // Continuar si toca fuera
+        onDismissRequest = onContinue,
         title = { Text("Partida Guardada") },
         text = { Text("¿Qué deseas hacer ahora?") },
         confirmButton = {
@@ -667,13 +650,22 @@ fun PostSaveDialog(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onContinue) {
+                Button(onClick = {
+                    view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                    onContinue()
+                }) {
                     Text("Continuar partida")
                 }
-                Button(onClick = onNewGame) {
+                Button(onClick = {
+                    view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                    onNewGame()
+                }) {
                     Text("🔄 Nuevo juego")
                 }
-                TextButton(onClick = onExit) {
+                TextButton(onClick = {
+                    view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                    onExit()
+                }) {
                     Text("🚪 Salir al menú")
                 }
             }
@@ -682,23 +674,30 @@ fun PostSaveDialog(
     )
 }
 
-// --- REQ 7: Diálogo después de guardar (partida ganada) ---
 @Composable
 fun PostWinSaveDialog(
     onNewGame: () -> Unit,
     onExit: () -> Unit
 ) {
+    val view = LocalView.current // <-- AÑADIR VISTA
+
     AlertDialog(
-        onDismissRequest = onNewGame, // Jugar de nuevo si toca fuera
+        onDismissRequest = onNewGame,
         title = { Text("Resultado Guardado") },
         text = { Text("¿Qué deseas hacer ahora?") },
         confirmButton = {
-            Button(onClick = onNewGame) {
+            Button(onClick = {
+                view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                onNewGame()
+            }) {
                 Text("🔄 Jugar de nuevo")
             }
         },
         dismissButton = {
-            TextButton(onClick = onExit) {
+            TextButton(onClick = {
+                view.playSoundEffect(SoundEffectConstants.CLICK) // <-- AÑADIR SONIDO
+                onExit()
+            }) {
                 Text("🚪 Salir al menú")
             }
         }
