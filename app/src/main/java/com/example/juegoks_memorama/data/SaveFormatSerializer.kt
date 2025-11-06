@@ -72,8 +72,9 @@ object SaveFormatSerializer {
     }
 
     // Deserialización XML se mantiene como no implementada para evitar dependencias complejas de parsing.
-    fun deserializeFromXml(xmlString: String): GameState {
-        throw NotImplementedError("La carga desde formato XML no está completamente implementada en este ejemplo.")
+    fun deserializeFromXml(xmlString: String): GameState? {
+        // CORREGIDO: Devolver null para evitar crash, ya que la carga no está implementada
+        return null
     }
 
     // --- TXT Serialization (key=value format) ---

@@ -26,7 +26,14 @@ import com.example.juegoks_memorama.data.SaveFormatSerializer // Importar
 data class GameUiState(
     val showSaveDialog: Boolean = false,
     val showHistoryDialog: Boolean = false, // CAMBIO: showLoadDialog -> showHistoryDialog
-    val historyItems: List<GameHistoryItem> = emptyList() // CAMBIO: saveFiles -> historyItems
+    val historyItems: List<GameHistoryItem> = emptyList(), // CAMBIO: saveFiles -> historyItems
+
+    // --- NUEVOS ESTADOS PARA DIÁLOGOS POST-GUARDADO ---
+    val showPostSaveDialog: Boolean = false, // Diálogo después de guardar (en curso)
+    val showPostWinSaveDialog: Boolean = false, // Diálogo después de guardar (partida ganada)
+
+    // --- NUEVO: Para validación de nombres de archivo ---
+    val existingSaveNames: List<String> = emptyList()
 )
 
 @HiltViewModel
@@ -46,6 +53,9 @@ class MemoryGameViewModel @Inject constructor(
     private var timerJob: Job? = null
     private var currentGameMode: GameMode = GameMode.SINGLE_PLAYER
     private var currentGameDifficulty: Difficulty = Difficulty.MEDIUM // Nuevo campo para la dificultad
+
+    // --- NUEVO: Rastrear el archivo cargado para sobrescribir ---
+    private var loadedSaveFile: Pair<String, SaveFormat>? = null
 
     init {
         viewModelScope.launch {
@@ -109,6 +119,7 @@ class MemoryGameViewModel @Inject constructor(
     fun startNewGame(difficulty: Difficulty = currentGameDifficulty) {
         timerJob?.cancel()
         currentGameDifficulty = difficulty
+        loadedSaveFile = null // <-- NUEVO: Reiniciar al empezar nuevo juego
 
         val maxPairs = difficulty.pairs
         val cardValues = (1..maxPairs).flatMap { listOf(it, it) }.shuffled()
@@ -270,7 +281,7 @@ class MemoryGameViewModel @Inject constructor(
         canFlip = true
     }
 
-    // --- NUEVOS MÉTODOS PARA GUARDAR/CARGAR MANUALMENTE ---
+    // --- LÓGICA DE GUARDADO/CARGA MANUAL MEJORADA ---
 
     fun showSaveDialog(show: Boolean) {
         _gameUiState.update { it.copy(showSaveDialog = show) }
@@ -281,14 +292,18 @@ class MemoryGameViewModel @Inject constructor(
         _gameUiState.update { it.copy(showHistoryDialog = show) }
         if (show) {
             viewModelScope.launch {
-                // Obtenemos los nombres de archivo
+                // Obtenemos los nombres de archivo, formato y timestamp
                 val files = repository.getAvailableSaveFiles()
+                val currentDifficulty = _gameState.value.difficulty // Dificultad actual
 
                 // Cargamos el estado de CADA archivo para clasificarlo
-                val historyList = files.mapNotNull { (filename, format) ->
+                val historyList = files.mapNotNull { (filename, format, timestamp) ->
                     val loadedState = repository.loadGameManual(filename, format)
-                    if (loadedState != null) {
-                        GameHistoryItem(filename, format, loadedState)
+
+                    // --- REQ: FILTRAR POR DIFICULTAD ---
+                    if (loadedState != null && loadedState.difficulty == currentDifficulty) {
+                        // Usamos el 'filename' con extensión
+                        GameHistoryItem(filename, format, loadedState, timestamp)
                     } else {
                         null
                     }
@@ -299,23 +314,61 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
-    // CAMBIO: Acepta el nombre del archivo
-    fun saveGame(filename: String, format: SaveFormat) {
+    // --- NUEVO: Lógica para decidir si sobrescribir o "Guardar como" ---
+    fun onSaveClick() {
         viewModelScope.launch {
-            // Usa el nombre de archivo proporcionado por el usuario
-            repository.saveGameManual(_gameState.value, format, filename)
-            showSaveDialog(false)
+            if (loadedSaveFile != null) {
+                // Sobrescribir: Guardar directamente con el nombre y formato ya conocidos
+                // El nombre en loadedSaveFile NO tiene extensión
+                saveGame(loadedSaveFile!!.first, loadedSaveFile!!.second)
+            } else {
+                // Guardar como:
+                // 1. Obtener todos los nombres existentes (sin extensión)
+                val allNames = repository.getAllSaveFileNames()
+
+                // 2. Actualizar el state con los nombres y mostrar el diálogo
+                _gameUiState.update {
+                    it.copy(
+                        existingSaveNames = allNames,
+                        showSaveDialog = true
+                    )
+                }
+            }
         }
     }
 
-    // CAMBIO: Renombrado
+    // CAMBIO: Convertido a suspend fun y muestra el diálogo post-guardado
+    suspend fun saveGame(filename: String, format: SaveFormat) {
+        val stateToSave = _gameState.value
+        // Guardamos usando el nombre de archivo SIN extensión
+        repository.saveGameManual(stateToSave, format, filename)
+
+        // Guardar el archivo que acabamos de usar (sin extensión)
+        loadedSaveFile = filename to format
+
+        // Mostrar el diálogo post-guardado correcto
+        if (stateToSave.gameCompleted) {
+            // REQ: Mostrar diálogo de "Jugar de nuevo" o "Salir"
+            _gameUiState.update { it.copy(showSaveDialog = false, showPostWinSaveDialog = true) }
+        } else {
+            // REQ: Mostrar diálogo de "Continuar", "Nuevo" o "Salir"
+            _gameUiState.update { it.copy(showSaveDialog = false, showPostSaveDialog = true) }
+        }
+    }
+
+    // CAMBIO: Renombrado y guarda el archivo cargado
     fun loadGameFromHistory(filename: String, format: SaveFormat) {
         viewModelScope.launch {
+            // 'filename' aquí SÍ tiene extensión (ej: "partida1.json")
             val loadedState = repository.loadGameManual(filename, format)
             if (loadedState != null) {
                 timerJob?.cancel()
                 _gameState.value = loadedState
                 currentGameDifficulty = loadedState.difficulty // Cargar la dificultad del guardado
+
+                // --- NUEVO: Guardar referencia al archivo cargado (SIN extensión) ---
+                val filenameWithoutExtension = filename.substringBeforeLast('.')
+                loadedSaveFile = filenameWithoutExtension to format
 
                 // Si se carga un juego incompleto, se debe iniciar el timer si estaba activo
                 if (loadedState.isTimerRunning && !loadedState.gameCompleted) {
@@ -324,9 +377,17 @@ class MemoryGameViewModel @Inject constructor(
                     // Asegurar que el juego pueda reanudarse
                     _gameState.update { it.copy(isTimerRunning = false) }
                 }
-
             }
             showHistoryDialog(false) // Cierra el diálogo de historial
         }
+    }
+
+    // --- NUEVO: Funciones para cerrar los diálogos post-guardado ---
+    fun dismissPostSaveDialog() {
+        _gameUiState.update { it.copy(showPostSaveDialog = false) }
+    }
+
+    fun dismissPostWinSaveDialog() {
+        _gameUiState.update { it.copy(showPostWinSaveDialog = false) }
     }
 }

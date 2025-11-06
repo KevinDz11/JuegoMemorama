@@ -47,5 +47,6 @@ data class GameState(
 data class GameHistoryItem(
     val filename: String,
     val format: SaveFormat,
-    val state: GameState
+    val state: GameState,
+    val timestamp: Long
 )

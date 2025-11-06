@@ -66,6 +66,7 @@ class GameRepository @Inject constructor(
 
     // Guardado manual
     suspend fun saveGameManual(gameState: GameState, format: SaveFormat, filename: String = "memorama_save") = withContext(Dispatchers.IO) {
+        // CORRECCIÓN: El nombre de archivo ya debe venir sin extensión, aquí la añadimos
         val extension = getFileExtension(format)
         val file = File(context.filesDir, "$filename$extension")
         val data = when (format) {
@@ -78,6 +79,7 @@ class GameRepository @Inject constructor(
 
     // Carga manual
     suspend fun loadGameManual(filename: String, format: SaveFormat): GameState? = withContext(Dispatchers.IO) {
+        // NOTA: El 'filename' que llega aquí SÍ incluye la extensión (viene de getAvailableSaveFiles)
         val file = File(context.filesDir, filename)
 
         if (!file.exists()) return@withContext null
@@ -95,7 +97,8 @@ class GameRepository @Inject constructor(
     }
 
     // Obtener archivos de guardado disponibles
-    fun getAvailableSaveFiles(): List<Pair<String, SaveFormat>> {
+    // CAMBIO: Devuelve un Triple (nombre, formato, timestamp)
+    fun getAvailableSaveFiles(): List<Triple<String, SaveFormat, Long>> {
         return context.filesDir.listFiles { _, name ->
             name.endsWith(".json") || name.endsWith(".xml") || name.endsWith(".txt")
         }?.map { file ->
@@ -105,7 +108,17 @@ class GameRepository @Inject constructor(
                 file.name.endsWith(".txt") -> SaveFormat.TXT
                 else -> throw IllegalStateException("Formato de guardado desconocido")
             }
-            file.name to format
-        }?.sortedByDescending { it.first } ?: emptyList()
+            // Devolvemos el nombre, formato Y la fecha de modificación
+            Triple(file.name, format, file.lastModified())
+        }?.sortedByDescending { it.third } ?: emptyList() // Ordenar por fecha (más reciente primero)
+    }
+
+    // --- NUEVO: Obtener solo los nombres de archivo (sin extensión) para validación ---
+    fun getAllSaveFileNames(): List<String> {
+        return context.filesDir.listFiles { _, name ->
+            name.endsWith(".json") || name.endsWith(".xml") || name.endsWith(".txt")
+        }?.map { file ->
+            file.nameWithoutExtension // Devuelve "partida1" si el archivo es "partida1.json"
+        } ?: emptyList()
     }
 }

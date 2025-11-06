@@ -1,3 +1,4 @@
+// ruta: app/src/main/java/com/example/juegoks_memorama/ui/screens/MemoryGameScreen.kt
 package com.example.juegoks_memorama.ui.screens
 
 import androidx.compose.foundation.clickable
@@ -54,12 +55,27 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
+// --- IMPORTS AÑADIDOS ---
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.compose.foundation.layout.width
 
 @Composable
 private fun formatTime(seconds: Long): String {
     val minutes = seconds / 60
     val remainingSeconds = seconds % 60
     return "%02d:%02d".format(minutes, remainingSeconds)
+}
+
+// --- NUEVO: Función para formatear fecha y hora ---
+@Composable
+private fun formatTimestamp(timestamp: Long): String {
+    val sdf = remember { SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()) }
+    return sdf.format(Date(timestamp))
 }
 
 @Composable
@@ -100,6 +116,7 @@ fun MemoryGameScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding() // <-- REQ 4: Añadir padding para la barra de estado
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -117,8 +134,8 @@ fun MemoryGameScreen(
             maxPairs = gameState.difficulty.pairs, // Pasar el máximo de pares
             onNewGame = { viewModel.startNewGame() },
             onExitGame = onExitGame,
-            onShowSaveDialog = { viewModel.showSaveDialog(true) },
-            onShowHistoryDialog = { viewModel.showHistoryDialog(true) } // CAMBIO
+            onSaveClick = { viewModel.onSaveClick() }, // <-- CAMBIO: Llama a onSaveClick
+            onShowHistoryDialog = { viewModel.showHistoryDialog(true) }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -144,14 +161,16 @@ fun MemoryGameScreen(
                 moves = gameState.moves,
                 score = gameState.score, // Mostrar puntuación final
                 onPlayAgain = { viewModel.startNewGame() },
-                onSaveResult = { viewModel.showSaveDialog(true) }, // NUEVO
-                onExit = onExitGame // NUEVO
+                onSaveResult = { viewModel.onSaveClick() }, // <-- CAMBIO: Llama a onSaveClick
+                onExit = onExitGame
             )
         }
 
         // --- DIÁLOGOS DE GUARDADO/CARGA ---
         if (uiState.showSaveDialog) {
             SaveGameDialog(
+                // --- NUEVO: Pasar la lista de nombres para validación ---
+                existingSaveNames = uiState.existingSaveNames,
                 onSave = { filename, format -> // CAMBIO
                     scope.launch { viewModel.saveGame(filename, format) } // CAMBIO
                 },
@@ -169,6 +188,55 @@ fun MemoryGameScreen(
                 onDismiss = { viewModel.showHistoryDialog(false) }
             )
         }
+
+        // --- REQ 1 & 2: Diálogo Post-Guardado (En curso) ---
+        if (uiState.showPostSaveDialog) {
+            PostSaveDialog(
+                onContinue = { viewModel.dismissPostSaveDialog() },
+                onNewGame = {
+                    viewModel.dismissPostSaveDialog()
+                    viewModel.startNewGame()
+                },
+                onExit = {
+                    viewModel.dismissPostSaveDialog()
+                    onExitGame()
+                }
+            )
+        }
+
+        // --- REQ 7: Diálogo Post-Guardado (Partida Ganada) ---
+        if (uiState.showPostWinSaveDialog) {
+            PostWinSaveDialog(
+                onNewGame = {
+                    viewModel.dismissPostWinSaveDialog()
+                    viewModel.startNewGame()
+                },
+                onExit = {
+                    viewModel.dismissPostWinSaveDialog()
+                    onExitGame()
+                }
+            )
+        }
+    }
+}
+
+// --- NUEVO: Helper Composable para las estadísticas ---
+@Composable
+private fun StatItem(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.padding(horizontal = 4.dp) // Añadir padding
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant // Color más sutil
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -181,83 +249,51 @@ fun GameHeader(
     maxPairs: Int,
     onNewGame: () -> Unit,
     onExitGame: () -> Unit,
-    onShowSaveDialog: () -> Unit,
-    onShowHistoryDialog: () -> Unit // CAMBIO: Renombrado de onShowLoadDialog
+    onSaveClick: () -> Unit,
+    onShowHistoryDialog: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp), // Reducir padding horizontal general
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    // --- REQ: Layout de Header rediseñado (Arreglo) ---
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // --- Columna de Estadísticas (Izquierda) ---
-        Column(
-            modifier = Modifier.weight(1f), // Ocupa el espacio disponible
-            horizontalAlignment = Alignment.Start
+        // --- Fila de Estadísticas ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceAround // Distribuye el espacio
         ) {
-            Text(
-                text = "Puntuación: $score",
-                style = MaterialTheme.typography.titleMedium, // Letra más grande
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Movimientos: $moves",
-                style = MaterialTheme.typography.bodyLarge // Letra más grande
-            )
-            Text(
-                text = "Parejas: $matchedPairs/$maxPairs",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = "Tiempo: ${formatTime(elapsedTime)}",
-                style = MaterialTheme.typography.bodyLarge
-            )
+            StatItem(label = "Puntuación", value = "$score")
+            StatItem(label = "Movimientos", value = "$moves")
+            StatItem(label = "Parejas", value = "$matchedPairs/$maxPairs")
+            StatItem(label = "Tiempo", value = formatTime(elapsedTime))
         }
 
-        // --- Columna de Botones (Derecha) ---
-        Column(
-            modifier = Modifier.weight(1f), // Ocupa el espacio disponible
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(8.dp) // Espacio entre botones
+        Spacer(Modifier.height(16.dp)) // Espacio entre stats y botones
+
+        // --- Fila 1 de Botones ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
         ) {
-            // Fila 1: Nuevo Juego
-            Button(
-                onClick = onNewGame,
-                modifier = Modifier.fillMaxWidth(0.9f) // Ancho uniforme
-            ) {
-                Text("Nuevo Juego")
-            }
+            Button(onClick = onNewGame) { Text("🔄 Nuevo") }
+            Button(onClick = onSaveClick) { Text("💾 Guardar") }
+        }
 
-            // Fila 2: Guardar e Historial
-            Row(
-                modifier = Modifier.fillMaxWidth(0.9f), // Ancho uniforme
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Button(
-                    onClick = onShowSaveDialog,
-                    modifier = Modifier.weight(1f) // Ocupa mitad
-                ) { Text("Guardar") }
+        Spacer(Modifier.height(8.dp)) // Espacio entre filas de botones
 
-                Spacer(modifier = Modifier.weight(0.1f)) // Pequeño espacio
-
-                // CAMBIO: Botón de Cargar ahora es Historial
-                Button(
-                    onClick = onShowHistoryDialog,
-                    modifier = Modifier.weight(1f) // Ocupa mitad
-                ) { Text("Historial") }
-            }
-
-            // Fila 3: Salir
-            Button(
-                onClick = onExitGame,
-                modifier = Modifier.fillMaxWidth(0.9f) // Ancho uniforme
-            ) {
-                Text("Salir")
-            }
+        // --- Fila 2 de Botones ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+        ) {
+            Button(onClick = onShowHistoryDialog) { Text("📜 Historial") }
+            Button(onClick = onExitGame) { Text("🚪 Salir") }
         }
     }
 }
+
 
 @Composable
 fun CardGrid(
@@ -365,8 +401,8 @@ fun GameCompletedDialog(
     moves: Int,
     score: Int,
     onPlayAgain: () -> Unit,
-    onSaveResult: () -> Unit, // NUEVO: Para abrir el diálogo de guardado
-    onExit: () -> Unit // NUEVO: Para salir
+    onSaveResult: () -> Unit, // <-- CAMBIO: Renombrado
+    onExit: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = { onPlayAgain() }, // Jugar de nuevo si toca fuera
@@ -377,34 +413,43 @@ fun GameCompletedDialog(
                 Text("Puntuación Final: $score puntos.")
             }
         },
+        // --- REQ 6: Layout de diálogo de victoria corregido ---
         confirmButton = {
-            Button(onClick = onSaveResult) { // NUEVO
-                Text("Guardar Resultado")
-            }
-        },
-        dismissButton = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onSaveResult) { // CAMBIO
+                    Text("💾 Guardar Resultado")
+                }
                 Button(onClick = onPlayAgain) {
-                    Text("Jugar de nuevo")
+                    Text("🔄 Jugar de nuevo")
                 }
                 Button(onClick = onExit) { // NUEVO
-                    Text("Salir")
+                    Text("🚪 Salir")
                 }
             }
-        }
+        },
+        dismissButton = { } // Dejar vacío
     )
 }
 
 // --- MODIFICADO: Diálogo para Guardar Partida ---
 @Composable
 fun SaveGameDialog(
-    onSave: (String, SaveFormat) -> Unit, // CAMBIO: Ahora recibe el nombre
+    existingSaveNames: List<String>, // <-- NUEVO: Para validación
+    onSave: (String, SaveFormat) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedFormat by remember { mutableStateOf(SaveFormat.JSON) }
-    // CAMBIO: Nuevo estado para el nombre del archivo
     var filename by rememberSaveable { mutableStateOf("") }
-    val isError = filename.isBlank() // Validar que no esté vacío
+
+    // --- REQ: Lógica de validación ---
+    val isBlank = filename.isBlank()
+    // Comprueba si el nombre (ignorando may/min) ya existe en la lista
+    val isDuplicate = existingSaveNames.any { it.equals(filename, ignoreCase = true) }
+
+    val isError = isBlank || isDuplicate
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -414,16 +459,27 @@ fun SaveGameDialog(
                 Text("Ingresa un nombre para tu partida:")
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // CAMBIO: Campo de texto para el nombre
                 OutlinedTextField(
                     value = filename,
                     onValueChange = { filename = it },
                     label = { Text("Nombre de archivo") },
                     singleLine = true,
-                    isError = isError
+                    isError = isError // <-- Aplicar estado de error
                 )
-                if (isError) {
-                    Text("El nombre no puede estar vacío", color = MaterialTheme.colorScheme.error)
+
+                // --- REQ: Mostrar mensaje de error específico ---
+                if (isBlank) {
+                    Text(
+                        "El nombre no puede estar vacío",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else if (isDuplicate) {
+                    Text(
+                        "Ese nombre de archivo ya existe",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -445,7 +501,7 @@ fun SaveGameDialog(
         },
         confirmButton = {
             Button(
-                // CAMBIO: Pasa el nombre y formato. Deshabilitado si hay error.
+                // Deshabilitado si hay error (vacío O duplicado)
                 onClick = { onSave(filename, selectedFormat) },
                 enabled = !isError
             ) { Text("Guardar") }
@@ -541,7 +597,10 @@ private fun HistoryItemRow(
     isSelected: Boolean,
     onSelect: () -> Unit
 ) {
-    val (filename, _, state) = item
+    // --- REQ 3: Añadir timestamp ---
+    // 'filename' aquí SÍ tiene extensión
+    val (filename, _, state, timestamp) = item
+    val formattedTimestamp = formatTimestamp(timestamp)
 
     val modifier = if (isFinished) {
         Modifier.padding(vertical = 8.dp) // No clickeable
@@ -566,7 +625,15 @@ private fun HistoryItemRow(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(filename, fontWeight = FontWeight.SemiBold)
+            // Mostramos el nombre de archivo SIN extensión para que sea más limpio
+            Text(filename.substringBeforeLast('.'), fontWeight = FontWeight.SemiBold)
+            // --- REQ 3: Mostrar fecha y hora ---
+            Text(
+                text = formattedTimestamp,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             if (isFinished) {
                 // Mostrar estadísticas de partidas terminadas
                 Text(
@@ -582,4 +649,58 @@ private fun HistoryItemRow(
             }
         }
     }
+}
+
+// --- REQ 1 & 2: Diálogo después de guardar (en curso) ---
+@Composable
+fun PostSaveDialog(
+    onContinue: () -> Unit,
+    onNewGame: () -> Unit,
+    onExit: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onContinue, // Continuar si toca fuera
+        title = { Text("Partida Guardada") },
+        text = { Text("¿Qué deseas hacer ahora?") },
+        confirmButton = {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onContinue) {
+                    Text("Continuar partida")
+                }
+                Button(onClick = onNewGame) {
+                    Text("🔄 Nuevo juego")
+                }
+                TextButton(onClick = onExit) {
+                    Text("🚪 Salir al menú")
+                }
+            }
+        },
+        dismissButton = {}
+    )
+}
+
+// --- REQ 7: Diálogo después de guardar (partida ganada) ---
+@Composable
+fun PostWinSaveDialog(
+    onNewGame: () -> Unit,
+    onExit: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onNewGame, // Jugar de nuevo si toca fuera
+        title = { Text("Resultado Guardado") },
+        text = { Text("¿Qué deseas hacer ahora?") },
+        confirmButton = {
+            Button(onClick = onNewGame) {
+                Text("🔄 Jugar de nuevo")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onExit) {
+                Text("🚪 Salir al menú")
+            }
+        }
+    )
 }
