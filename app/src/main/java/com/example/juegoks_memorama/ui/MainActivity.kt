@@ -18,6 +18,10 @@ import com.example.juegoks_memorama.ui.screens.MemoryGameScreen
 import com.example.juegoks_memorama.ui.screens.ModeSelectionScreen
 import com.example.juegoks_memorama.ui.theme.MemoryGameTheme
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.compose.runtime.collectAsState // Importar
+import androidx.hilt.navigation.compose.hiltViewModel // Importar
+import com.example.juegoks_memorama.viewmodel.MemoryGameViewModel // Importar
+import com.example.juegoks_memorama.model.AppThemeOption // Importar
 
 // --- NUEVO ESTADO DE NAVEGACIÓN ---
 sealed class Screen {
@@ -31,9 +35,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            // OBTENER VIEWMODEL Y TEMA
+            val viewModel: MemoryGameViewModel = hiltViewModel()
+            val currentTheme by viewModel.currentTheme.collectAsState()
+
             var currentScreen by remember { mutableStateOf<Screen>(Screen.ModeSelection) }
 
-            MemoryGameTheme {
+            // PASAR EL TEMA AL WRAPPER
+            MemoryGameTheme(themeOption = currentTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -49,6 +58,10 @@ class MainActivity : ComponentActivity() {
                                         // Para Bluetooth, asumir dificultad media por ahora
                                         currentScreen = Screen.Game(mode, Difficulty.MEDIUM)
                                     }
+                                },
+                                // PASAR LA FUNCIÓN PARA CAMBIAR TEMA
+                                onThemeChange = { theme ->
+                                    viewModel.setTheme(theme)
                                 }
                             )
                         }

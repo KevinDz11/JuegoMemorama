@@ -2,6 +2,10 @@
 package com.example.juegoks_memorama.model
 import kotlinx.serialization.Serializable
 
+enum class AppThemeOption {
+    IPN,
+    ESCOM
+}
 @Serializable // Nueva clase serializable para el historial
 data class Move(
     val card1Id: Int,

@@ -15,10 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.juegoks_memorama.model.GameMode
+import androidx.compose.foundation.layout.Row
+import com.example.juegoks_memorama.model.AppThemeOption
 
 @Composable
 fun ModeSelectionScreen(
-    onModeSelected: (GameMode) -> Unit
+    onModeSelected: (GameMode) -> Unit,
+    onThemeChange: (AppThemeOption) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -53,6 +56,17 @@ fun ModeSelectionScreen(
             modifier = Modifier.height(50.dp)
         ) {
             Text("Multijugador (Bluetooth)", fontSize = 18.sp)
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+        Text("Seleccionar Tema:", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { onThemeChange(AppThemeOption.IPN) }) {
+                Text("Tema IPN")
+            }
+            Button(onClick = { onThemeChange(AppThemeOption.ESCOM) }) {
+                Text("Tema ESCOM")
+            }
         }
     }
 }
