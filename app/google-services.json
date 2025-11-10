@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "108633170047",
+    "project_id": "memorama-fc3ef",
+    "storage_bucket": "memorama-fc3ef.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:108633170047:android:bcf02b0fafd0ed40191f4a",
+        "android_client_info": {
+          "package_name": "com.example.juegoks_memorama"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6Omiw8QaBbsQ9iG7jSeIAVr3rWUX3A8E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
