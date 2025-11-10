@@ -22,7 +22,10 @@ import com.example.juegoks_memorama.model.SaveFormat
 import com.example.juegoks_memorama.model.Move
 import com.example.juegoks_memorama.model.GameHistoryItem
 import com.example.juegoks_memorama.data.SaveFormatSerializer
-import com.example.juegoks_memorama.data.SoundPlayer // <-- AÑADIR
+import com.example.juegoks_memorama.data.SoundPlayer
+import com.example.juegoks_memorama.model.AppThemeOption
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 
 data class GameUiState(
     val showSaveDialog: Boolean = false,
@@ -40,6 +43,19 @@ class MemoryGameViewModel @Inject constructor(
     private val repository: GameRepository,
     private val soundPlayer: SoundPlayer // <-- AÑADIR (Inyectar)
 ) : ViewModel() {
+
+    val currentTheme: StateFlow<AppThemeOption> = repository.savedTheme
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = AppThemeOption.IPN
+        )
+
+    fun setTheme(theme: AppThemeOption) {
+        viewModelScope.launch {
+            repository.saveTheme(theme)
+        }
+    }
 
     private val _gameState = MutableStateFlow(GameState())
     val gameState = _gameState.asStateFlow()

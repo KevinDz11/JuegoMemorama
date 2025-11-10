@@ -18,6 +18,8 @@ import com.example.juegoks_memorama.model.SaveFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.juegoks_memorama.model.AppThemeOption
 
 // Configuración de DataStore
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "game_settings")
@@ -27,6 +29,19 @@ class GameRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val gameStateKey = stringPreferencesKey("game_state")
+    private val themeKey = stringPreferencesKey("app_theme_option")
+
+    val savedTheme: Flow<AppThemeOption> = context.dataStore.data
+        .map { preferences ->
+            val themeName = preferences[themeKey]
+            try {
+                // Si hay un nombre guardado, lo convierte al enum. Si no, usa IPN por defecto.
+                if (themeName != null) AppThemeOption.valueOf(themeName) else AppThemeOption.IPN
+            } catch (e: IllegalArgumentException) {
+                // Si el nombre guardado es inválido (de una versión vieja), usa IPN por seguridad.
+                AppThemeOption.IPN
+            }
+        }
 
     // Flujo para leer el GameState (Guardado automático JSON/DataStore)
     val savedGameState: Flow<GameState?> = context.dataStore.data
@@ -41,6 +56,12 @@ class GameRepository @Inject constructor(
                 }
             }
         }
+
+    suspend fun saveTheme(theme: AppThemeOption) {
+        context.dataStore.edit { preferences ->
+            preferences[themeKey] = theme.name
+        }
+    }
 
     // Función para guardar el GameState (Guardado automático JSON/DataStore)
     suspend fun saveGameState(gameState: GameState) {
