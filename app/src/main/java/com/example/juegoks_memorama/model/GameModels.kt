@@ -45,7 +45,11 @@ data class GameState(
     val moveHistory: List<Move> = emptyList(),
     val gameCompleted: Boolean = false,
     val elapsedTimeInSeconds: Long = 0,
-    val isTimerRunning: Boolean = false
+    val isTimerRunning: Boolean = false,
+    val isMultiplayer: Boolean = false,
+    val isHost: Boolean = false,
+    val isMyTurn: Boolean = true,
+    val opponentScore: Int = 0
 )
 
 data class GameHistoryItem(
