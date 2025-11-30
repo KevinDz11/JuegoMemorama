@@ -6,6 +6,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -35,10 +37,11 @@ fun BluetoothScreen(
     val scope = rememberCoroutineScope()
     var permissionGranted by remember { mutableStateOf(false) }
 
-    // Lista de dispositivos emparejados
+    // Estado local para la dificultad seleccionada por el Host
+    var selectedDifficulty by remember { mutableStateOf(Difficulty.MEDIUM) }
+
     var pairedDevices by remember { mutableStateOf(emptyList<android.bluetooth.BluetoothDevice>()) }
 
-    // --- LÓGICA DE PERMISOS INTELIGENTE ---
     val permissionsToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(
             Manifest.permission.BLUETOOTH_SCAN,
@@ -58,7 +61,6 @@ fun BluetoothScreen(
             try {
                 pairedDevices = viewModel.bluetoothService.getPairedDevices()
             } catch (e: SecurityException) {
-                // Manejar excepción
             }
         }
     }
@@ -91,32 +93,54 @@ fun BluetoothScreen(
                     Text("Dar Permisos")
                 }
             } else {
+                Text("Si eres HOST, selecciona la dificultad:", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // SELECTOR DE DIFICULTAD PARA EL HOST
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Difficulty.entries.forEach { diff ->
+                        FilterChip(
+                            selected = selectedDifficulty == diff,
+                            onClick = { selectedDifficulty = diff },
+                            label = { Text(diff.name) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // BOTÓN SERVIDOR (HOST)
                 Button(
                     onClick = {
                         if (permissionGranted) {
-                            // Configuramos el modo ANTES de conectar
                             viewModel.setGameMode(GameMode.BLUETOOTH)
                             scope.launch {
                                 try {
                                     Toast.makeText(context, "Esperando conexión...", Toast.LENGTH_SHORT).show()
                                     viewModel.bluetoothService.startServer()
-                                    // Al conectar, inicia como HOST
-                                    viewModel.startMultiplayerGame(isHost = true, Difficulty.MEDIUM)
-                                    onGameStart() // Navegar SOLO cuando termine la conexión
+                                    // Pasamos la dificultad seleccionada
+                                    viewModel.startMultiplayerGame(isHost = true, difficulty = selectedDifficulty)
+                                    onGameStart()
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Error al conectar: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text("Crear Partida (Esperar conexión)")
+                    Text("Crear Partida (${selectedDifficulty.name})")
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-                Text("O conéctate a un dispositivo emparejado:", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(24.dp))
+                Divider()
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text("O conéctate a un dispositivo (CLIENTE):", style = MaterialTheme.typography.titleMedium)
 
                 LazyColumn {
                     items(pairedDevices) { device ->
@@ -126,18 +150,14 @@ fun BluetoothScreen(
                                 .padding(vertical = 4.dp)
                                 .clickable {
                                     if (permissionGranted) {
-                                        // Configuramos el modo ANTES de conectar para limpiar el tablero
                                         viewModel.setGameMode(GameMode.BLUETOOTH)
-
                                         scope.launch {
                                             try {
                                                 Toast.makeText(context, "Conectando...", Toast.LENGTH_SHORT).show()
                                                 viewModel.bluetoothService.connectToDevice(device)
-                                                // SOLO navegamos si la conexión fue exitosa
                                                 onGameStart()
                                             } catch (e: Exception) {
                                                 Toast.makeText(context, "No se pudo conectar", Toast.LENGTH_SHORT).show()
-                                                // Si falla, regresamos a modo single player o nos quedamos aquí
                                             }
                                         }
                                     }

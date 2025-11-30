@@ -76,32 +76,44 @@ fun MemoryGameScreen(
         // --- CABECERA ---
         if (gameMode == GameMode.BLUETOOTH) {
             Text(
-                text = "📶 Multijugador Bluetooth",
+                text = "📶 Multijugador (${gameState.difficulty.name})",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
             if (gameState.cards.isNotEmpty()) {
+                // Indicador de turno
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = if (gameState.isMyTurn) Color(0xFF4CAF50) else Color(0xFFE57373)
                     ),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                 ) {
-                    Text(
-                        text = if (gameState.isMyTurn) "¡TU TURNO! 🟢" else "ESPERA AL RIVAL 🔴",
-                        modifier = Modifier.padding(12.dp).align(Alignment.CenterHorizontally),
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (gameState.isMyTurn) "¡TU TURNO! 🟢" else "RIVAL 🔴",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // MOSTRAR TIEMPO EN MULTIJUGADOR
+                        Text(
+                            text = "⏱ ${formatTime(gameState.elapsedTimeInSeconds)}",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    ScoreBox(label = "TÚ", score = gameState.score, active = gameState.isMyTurn)
-                    ScoreBox(label = "RIVAL", score = gameState.opponentScore, active = !gameState.isMyTurn)
+                    ScoreBox(label = "TÚ", score = gameState.score, pairs = gameState.myPairs, active = gameState.isMyTurn)
+                    ScoreBox(label = "RIVAL", score = gameState.opponentScore, pairs = gameState.opponentPairs, active = !gameState.isMyTurn)
                 }
             }
         } else {
@@ -119,7 +131,7 @@ fun MemoryGameScreen(
                 maxPairs = gameState.difficulty.pairs,
                 onNewGame = { viewModel.startNewGame() },
                 onExitGame = {
-                    viewModel.onExitGame() // Corrección Salir
+                    viewModel.onExitGame()
                     onExitGame()
                 },
                 onSaveClick = { viewModel.onSaveClick() },
@@ -210,10 +222,10 @@ fun MemoryGameScreen(
     }
 }
 
-// --- COMPONENTES UI ---
+// --- COMPONENTES UI MODIFICADOS ---
 
 @Composable
-fun ScoreBox(label: String, score: Int, active: Boolean) {
+fun ScoreBox(label: String, score: Int, pairs: Int, active: Boolean) {
     Card(
         colors = CardDefaults.cardColors(
             containerColor = if(active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
@@ -226,8 +238,11 @@ fun ScoreBox(label: String, score: Int, active: Boolean) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-            Text("${score}", style = MaterialTheme.typography.headlineLarge) // Puntos reales
+            Text("${score}", style = MaterialTheme.typography.headlineLarge)
             Text("Pts", style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(4.dp))
+            // AÑADIDO: Muestra los pares
+            Text("🃏 $pairs Pares", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -321,6 +336,7 @@ fun GameCompletedDialog(moves: Int, myScore: Int, opponentScore: Int, elapsedTim
                 if (isMultiplayer) {
                     Text("Tus Puntos: $myScore")
                     Text("Puntos Rival: $opponentScore")
+                    Text("Tiempo: ${formatTime(elapsedTime)}")
                 } else {
                     Text("Tiempo: ${formatTime(elapsedTime)}")
                     Text("Movimientos: $moves")
@@ -341,7 +357,6 @@ fun GameCompletedDialog(moves: Int, myScore: Int, opponentScore: Int, elapsedTim
     )
 }
 
-// CORRECCIÓN 3: Validación de nombres duplicados
 @Composable
 fun SaveGameDialog(existingSaveNames: List<String>, onSave: (String, SaveFormat) -> Unit, onDismiss: () -> Unit) {
     var selectedFormat by remember { mutableStateOf(SaveFormat.JSON) }
@@ -374,7 +389,6 @@ fun SaveGameDialog(existingSaveNames: List<String>, onSave: (String, SaveFormat)
     )
 }
 
-// CORRECCIÓN 4: Historial con separación visual y datos completos
 @Composable
 fun HistoryDialog(historyItems: List<GameHistoryItem>, onLoad: (String, SaveFormat) -> Unit, onDismiss: () -> Unit) {
     var selectedFile by remember { mutableStateOf<Pair<String, SaveFormat>?>(null) }
@@ -385,7 +399,6 @@ fun HistoryDialog(historyItems: List<GameHistoryItem>, onLoad: (String, SaveForm
         title = { Text("📜 Historial de Partidas") },
         text = {
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                // SECCIÓN EN PROGRESO
                 item {
                     Text("▶️ Partidas en Curso (Cargar)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     HorizontalDivider()
@@ -411,7 +424,6 @@ fun HistoryDialog(historyItems: List<GameHistoryItem>, onLoad: (String, SaveForm
 
                 item { Spacer(modifier = Modifier.height(16.dp)) }
 
-                // SECCIÓN COMPLETADAS
                 item {
                     Text("✅ Partidas Finalizadas (Solo ver)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                     HorizontalDivider()

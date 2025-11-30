@@ -49,7 +49,9 @@ data class GameState(
     val isMultiplayer: Boolean = false,
     val isHost: Boolean = false,
     val isMyTurn: Boolean = true,
-    val opponentScore: Int = 0
+    val opponentScore: Int = 0,
+    val myPairs: Int = 0,
+    val opponentPairs: Int = 0
 )
 
 data class GameHistoryItem(
