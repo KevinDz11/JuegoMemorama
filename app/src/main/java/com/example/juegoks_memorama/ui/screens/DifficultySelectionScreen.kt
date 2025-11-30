@@ -29,21 +29,21 @@ fun DifficultySelectionScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Selecciona Dificultad",
+            text = "📊 Selecciona Dificultad",
             style = MaterialTheme.typography.headlineLarge,
             fontSize = 32.sp
         )
         Spacer(modifier = Modifier.height(64.dp))
 
-        DifficultyButton(difficulty = Difficulty.EASY, label = "Fácil (4x3 - 6 Pares)", onClick = onDifficultySelected)
+        DifficultyButton(difficulty = Difficulty.EASY, label = "🟢 Fácil (4x3 - 6 Pares)", onClick = onDifficultySelected)
         Spacer(modifier = Modifier.height(16.dp))
-        DifficultyButton(difficulty = Difficulty.MEDIUM, label = "Media (6x5 - 15 Pares)", onClick = onDifficultySelected)
+        DifficultyButton(difficulty = Difficulty.MEDIUM, label = "🟡 Media (6x5 - 15 Pares)", onClick = onDifficultySelected)
         Spacer(modifier = Modifier.height(16.dp))
-        DifficultyButton(difficulty = Difficulty.HARD, label = "Difícil (8x7 - 28 Pares)", onClick = onDifficultySelected)
+        DifficultyButton(difficulty = Difficulty.HARD, label = "🔴 Difícil (8x7 - 28 Pares)", onClick = onDifficultySelected)
 
         Spacer(modifier = Modifier.height(48.dp))
         Button(onClick = onBack) {
-            Text("Volver al Modo")
+            Text("🔙 Volver al Modo")
         }
     }
 }
