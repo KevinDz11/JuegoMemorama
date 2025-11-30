@@ -3,18 +3,7 @@ package com.example.juegoks_memorama.ui.screens
 import android.view.SoundEffectConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -22,24 +11,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QuestionMark
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -48,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.core.Animatable
@@ -72,6 +45,12 @@ private fun formatTime(seconds: Long): String {
 }
 
 @Composable
+private fun formatTimestamp(timestamp: Long): String {
+    val sdf = remember { SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()) }
+    return sdf.format(Date(timestamp))
+}
+
+@Composable
 fun MemoryGameScreen(
     gameMode: GameMode,
     initialDifficulty: Difficulty,
@@ -81,6 +60,7 @@ fun MemoryGameScreen(
     val gameState by viewModel.gameState.collectAsStateWithLifecycle()
     val uiState by viewModel.gameUiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
 
     LaunchedEffect(initialDifficulty) {
         viewModel.setDifficulty(initialDifficulty)
@@ -95,15 +75,13 @@ fun MemoryGameScreen(
     ) {
         // --- CABECERA ---
         if (gameMode == GameMode.BLUETOOTH) {
-            // CABECERA MULTIJUGADOR
             Text(
-                text = "Multijugador Bluetooth",
+                text = "📶 Multijugador Bluetooth",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
             if (gameState.cards.isNotEmpty()) {
-                // Indicador de Turno (Solo si el juego ya inició)
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = if (gameState.isMyTurn) Color(0xFF4CAF50) else Color(0xFFE57373)
@@ -111,14 +89,13 @@ fun MemoryGameScreen(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                 ) {
                     Text(
-                        text = if (gameState.isMyTurn) "¡TU TURNO! JUEGA." else "ESPERA... TURNO DEL RIVAL",
+                        text = if (gameState.isMyTurn) "¡TU TURNO! 🟢" else "ESPERA AL RIVAL 🔴",
                         modifier = Modifier.padding(12.dp).align(Alignment.CenterHorizontally),
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                // Marcador
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -128,9 +105,9 @@ fun MemoryGameScreen(
                 }
             }
         } else {
-            // CABECERA UN JUGADOR
+            // UN JUGADOR
             Text(
-                text = "Un Jugador (${gameState.difficulty.name})",
+                text = "👤 Un Jugador (${gameState.difficulty.name})",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -141,7 +118,10 @@ fun MemoryGameScreen(
                 elapsedTime = gameState.elapsedTimeInSeconds,
                 maxPairs = gameState.difficulty.pairs,
                 onNewGame = { viewModel.startNewGame() },
-                onExitGame = onExitGame,
+                onExitGame = {
+                    viewModel.onExitGame() // Corrección Salir
+                    onExitGame()
+                },
                 onSaveClick = { viewModel.onSaveClick() },
                 onShowHistoryDialog = { viewModel.showHistoryDialog(true) }
             )
@@ -149,26 +129,21 @@ fun MemoryGameScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- CUERPO PRINCIPAL (TABLERO O CARGA) ---
-
-        // PANTALLA DE CARGA PARA CLIENTE
+        // --- TABLERO ---
         if (gameMode == GameMode.BLUETOOTH && gameState.cards.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Conectado.", style = MaterialTheme.typography.titleMedium)
-                    Text("Esperando configuración del Anfitrión...", style = MaterialTheme.typography.bodyMedium)
+                    Text("Conectado. Esperando partida...", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }
-        // TABLERO DE JUEGO
         else if (gameState.cards.isNotEmpty()) {
             CardGrid(
                 cards = gameState.cards,
                 columns = gameState.difficulty.columns,
                 onCardClick = { card -> viewModel.onCardClick(card) },
-                // En bluetooth, si no es mi turno, bajamos opacidad pero el tablero sigue visible
                 modifier = Modifier
                     .weight(1f)
                     .alpha(if (gameMode == GameMode.BLUETOOTH && !gameState.isMyTurn) 0.6f else 1f)
@@ -177,7 +152,7 @@ fun MemoryGameScreen(
             Spacer(modifier = Modifier.weight(1f))
         }
 
-        // --- DIÁLOGOS DE FINALIZACIÓN ---
+        // --- DIÁLOGOS ---
         if (gameState.gameCompleted) {
             GameCompletedDialog(
                 moves = gameState.moves,
@@ -190,11 +165,13 @@ fun MemoryGameScreen(
                     else onExitGame()
                 },
                 onSaveResult = { viewModel.onSaveClick() },
-                onExit = onExitGame
+                onExit = {
+                    viewModel.onExitGame()
+                    onExitGame()
+                }
             )
         }
 
-        // Diálogos de guardado/historial (solo aparecen en Single Player gracias al ViewModel)
         if (uiState.showSaveDialog) {
             SaveGameDialog(
                 existingSaveNames = uiState.existingSaveNames,
@@ -213,19 +190,27 @@ fun MemoryGameScreen(
             PostSaveDialog(
                 onContinue = { viewModel.dismissPostSaveDialog() },
                 onNewGame = { viewModel.dismissPostSaveDialog(); viewModel.startNewGame() },
-                onExit = { viewModel.dismissPostSaveDialog(); onExitGame() }
+                onExit = {
+                    viewModel.dismissPostSaveDialog()
+                    viewModel.onExitGame()
+                    onExitGame()
+                }
             )
         }
         if (uiState.showPostWinSaveDialog) {
             PostWinSaveDialog(
                 onNewGame = { viewModel.dismissPostWinSaveDialog(); viewModel.startNewGame() },
-                onExit = { viewModel.dismissPostWinSaveDialog(); onExitGame() }
+                onExit = {
+                    viewModel.dismissPostWinSaveDialog()
+                    viewModel.onExitGame()
+                    onExitGame()
+                }
             )
         }
     }
 }
 
-// --- COMPONENTES AUXILIARES ---
+// --- COMPONENTES UI ---
 
 @Composable
 fun ScoreBox(label: String, score: Int, active: Boolean) {
@@ -241,8 +226,8 @@ fun ScoreBox(label: String, score: Int, active: Boolean) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-            Text("${score / 100}", style = MaterialTheme.typography.headlineLarge)
-            Text("Pares", style = MaterialTheme.typography.bodySmall)
+            Text("${score}", style = MaterialTheme.typography.headlineLarge) // Puntos reales
+            Text("Pts", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -252,19 +237,20 @@ fun GameHeader(moves: Int, matchedPairs: Int, score: Int, elapsedTime: Long, max
     val view = LocalView.current
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceAround) {
-            StatItem(label = "Puntuación", value = "$score")
-            StatItem(label = "Movimientos", value = "$moves")
-            StatItem(label = "Parejas", value = "$matchedPairs/$maxPairs")
-            StatItem(label = "Tiempo", value = formatTime(elapsedTime))
+            StatItem(label = "🏆 Puntos", value = "$score")
+            StatItem(label = "🔄 Movs", value = "$moves")
+            StatItem(label = "🃏 Pares", value = "$matchedPairs/$maxPairs")
+            StatItem(label = "⏱ Tiempo", value = formatTime(elapsedTime))
         }
         Spacer(Modifier.height(8.dp))
-        // Botones agrupados
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onNewGame() }) { Text("Nuevo") }
-            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onSaveClick() }) { Text("Guardar") }
-            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onExitGame() }) { Text("Salir") }
+            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onNewGame() }) { Text("🔄 Nuevo") }
+            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onSaveClick() }) { Text("💾 Guardar") }
         }
-        Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onShowHistoryDialog() }) { Text("Ver Historial") }
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onShowHistoryDialog() }) { Text("📜 Historial") }
+            Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onExitGame() }) { Text("🚪 Salir") }
+        }
     }
 }
 
@@ -293,7 +279,6 @@ fun MemoryCard(card: com.example.juegoks_memorama.model.Card, onClick: () -> Uni
     val rotation = remember { Animatable(0f) }
     var isFaceUp by remember { mutableStateOf(card.isFaceUp) }
 
-    // Animación de volteo
     LaunchedEffect(card.isFaceUp) {
         if (card.isFaceUp != isFaceUp) {
             if (card.isFaceUp) rotation.animateTo(180f, animationSpec = tween(400))
@@ -301,7 +286,6 @@ fun MemoryCard(card: com.example.juegoks_memorama.model.Card, onClick: () -> Uni
             isFaceUp = card.isFaceUp
         }
     }
-
     val animateScale by animateFloatAsState(targetValue = if (card.isMatched) 0.0f else 1f, label = "scale")
 
     Box(modifier = Modifier.aspectRatio(0.75f).scale(animateScale)) {
@@ -331,45 +315,56 @@ fun GameCompletedDialog(moves: Int, myScore: Int, opponentScore: Int, elapsedTim
 
     AlertDialog(
         onDismissRequest = { if (!isMultiplayer) onPlayAgain() else onExit() },
-        title = { Text(if (isMultiplayer) (if (tie) "¡Empate!" else if (won) "¡GANASTE! 🎉" else "Perdiste... 😢") else "¡Felicidades!") },
+        title = { Text(if (isMultiplayer) (if (tie) "¡🤝 Empate!" else if (won) "¡🏆 GANASTE!" else "😞 Perdiste...") else "¡🎉 Felicidades!") },
         text = {
             Column {
                 if (isMultiplayer) {
-                    Text("Tus Pares: ${myScore / 100}")
-                    Text("Pares Rival: ${opponentScore / 100}")
+                    Text("Tus Puntos: $myScore")
+                    Text("Puntos Rival: $opponentScore")
                 } else {
-                    Text("Completado en $moves movimientos.")
-                    Text("Puntuación: $myScore pts.")
+                    Text("Tiempo: ${formatTime(elapsedTime)}")
+                    Text("Movimientos: $moves")
+                    Text("Puntuación Final: $myScore pts")
                 }
             }
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
                 if (!isMultiplayer) {
-                    Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onSaveResult() }) { Text("Guardar") }
-                    Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onPlayAgain() }) { Text("Jugar de nuevo") }
+                    Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onSaveResult() }) { Text("💾 Guardar Resultado") }
+                    Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onPlayAgain() }) { Text("🔄 Jugar de nuevo") }
                 }
-                Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onExit() }) { Text("Salir") }
+                Button(onClick = { view.playSoundEffect(SoundEffectConstants.CLICK); onExit() }) { Text("🚪 Salir") }
             }
         },
         dismissButton = {}
     )
 }
 
-// Diálogos de guardado/historial simplificados para ahorrar espacio (ya están en el código original)
+// CORRECCIÓN 3: Validación de nombres duplicados
 @Composable
 fun SaveGameDialog(existingSaveNames: List<String>, onSave: (String, SaveFormat) -> Unit, onDismiss: () -> Unit) {
     var selectedFormat by remember { mutableStateOf(SaveFormat.JSON) }
     var filename by rememberSaveable { mutableStateOf("") }
+
     val isBlank = filename.isBlank()
     val isDuplicate = existingSaveNames.any { it.equals(filename, ignoreCase = true) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Guardar Partida") },
+        title = { Text("💾 Guardar Partida") },
         text = {
             Column {
-                Text("Nombre:")
-                OutlinedTextField(value = filename, onValueChange = { filename = it }, isError = isBlank || isDuplicate)
+                Text("Nombre del archivo:")
+                OutlinedTextField(
+                    value = filename,
+                    onValueChange = { filename = it },
+                    isError = isBlank || isDuplicate,
+                    supportingText = {
+                        if (isDuplicate) Text("Este nombre ya existe", color = MaterialTheme.colorScheme.error)
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 Text("Formato:")
                 Row { SaveFormat.entries.forEach { f -> Text("${if(selectedFormat==f)"●" else "○"} ${f.name}", Modifier.clickable{selectedFormat=f}.padding(4.dp)) } }
             }
@@ -379,21 +374,72 @@ fun SaveGameDialog(existingSaveNames: List<String>, onSave: (String, SaveFormat)
     )
 }
 
+// CORRECCIÓN 4: Historial con separación visual y datos completos
 @Composable
 fun HistoryDialog(historyItems: List<GameHistoryItem>, onLoad: (String, SaveFormat) -> Unit, onDismiss: () -> Unit) {
     var selectedFile by remember { mutableStateOf<Pair<String, SaveFormat>?>(null) }
+    val (completed, inProgress) = historyItems.partition { it.state.gameCompleted }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Historial") },
-        text = { LazyColumn { items(historyItems) { item -> Text(item.filename, Modifier.clickable { selectedFile = item.filename to item.format }.background(if(selectedFile?.first==item.filename) Color.LightGray else Color.Transparent).fillMaxWidth().padding(8.dp)) } } },
-        confirmButton = { Button(onClick = { selectedFile?.let { onLoad(it.first, it.second) } }) { Text("Cargar") } },
+        title = { Text("📜 Historial de Partidas") },
+        text = {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                // SECCIÓN EN PROGRESO
+                item {
+                    Text("▶️ Partidas en Curso (Cargar)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    HorizontalDivider()
+                }
+                if (inProgress.isEmpty()) item { Text("No hay partidas guardadas.", Modifier.padding(8.dp)) }
+                items(inProgress) { item ->
+                    val isSelected = selectedFile?.first == item.filename
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedFile = item.filename to item.format }
+                            .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(if (isSelected) "◉ " else "○ ", fontWeight = FontWeight.Bold)
+                        Column {
+                            Text(item.filename, fontWeight = FontWeight.Bold)
+                            Text("Puntos: ${item.state.score} | ${formatTime(item.state.elapsedTimeInSeconds)} | ${formatTimestamp(item.timestamp)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+
+                // SECCIÓN COMPLETADAS
+                item {
+                    Text("✅ Partidas Finalizadas (Solo ver)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                    HorizontalDivider()
+                }
+                if (completed.isEmpty()) item { Text("No hay partidas completadas.", Modifier.padding(8.dp)) }
+                items(completed) { item ->
+                    Column(modifier = Modifier.padding(8.dp).alpha(0.7f)) {
+                        Text(item.filename, fontWeight = FontWeight.Bold)
+                        Text("FINAL: ${item.state.score} pts | Tiempo: ${formatTime(item.state.elapsedTimeInSeconds)}", style = MaterialTheme.typography.bodySmall)
+                        Text("Fecha: ${formatTimestamp(item.timestamp)}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    HorizontalDivider(thickness = 0.5.dp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { selectedFile?.let { onLoad(it.first, it.second) } },
+                enabled = selectedFile != null
+            ) { Text("Cargar") }
+        },
         dismissButton = { Button(onClick = onDismiss) { Text("Cerrar") } }
     )
 }
 
 @Composable fun PostSaveDialog(onContinue: () -> Unit, onNewGame: () -> Unit, onExit: () -> Unit) {
-    AlertDialog(onDismissRequest = onContinue, title = { Text("Guardado") }, text = { Text("¿Qué sigue?") }, confirmButton = { Column { Button(onClick = onContinue) { Text("Seguir") }; Button(onClick = onNewGame) { Text("Nuevo") }; Button(onClick = onExit) { Text("Salir") } } })
+    AlertDialog(onDismissRequest = onContinue, title = { Text("💾 Guardado") }, text = { Text("Partida guardada con éxito. ¿Qué sigue?") }, confirmButton = { Column(horizontalAlignment = Alignment.End) { Button(onClick = onContinue) { Text("▶️ Seguir jugando") }; Button(onClick = onNewGame) { Text("🔄 Nuevo juego") }; Button(onClick = onExit) { Text("🚪 Salir") } } })
 }
 @Composable fun PostWinSaveDialog(onNewGame: () -> Unit, onExit: () -> Unit) {
-    AlertDialog(onDismissRequest = onNewGame, title = { Text("Guardado") }, text = { Text("¿Qué sigue?") }, confirmButton = { Column { Button(onClick = onNewGame) { Text("Nuevo") }; Button(onClick = onExit) { Text("Salir") } } })
+    AlertDialog(onDismissRequest = onNewGame, title = { Text("💾 Resultado Guardado") }, text = { Text("¡Partida registrada! ¿Qué deseas hacer?") }, confirmButton = { Column(horizontalAlignment = Alignment.End) { Button(onClick = onNewGame) { Text("🔄 Nuevo juego") }; Button(onClick = onExit) { Text("🚪 Salir") } } })
 }

@@ -31,7 +31,7 @@ fun ModeSelectionScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Juego de Memorama",
+            text = "🧠 Juego de Memorama",
             style = MaterialTheme.typography.headlineLarge,
             fontSize = 32.sp
         )
@@ -46,7 +46,7 @@ fun ModeSelectionScreen(
             onClick = { onModeSelected(GameMode.SINGLE_PLAYER) },
             modifier = Modifier.height(50.dp)
         ) {
-            Text("Un Jugador (Normal)", fontSize = 18.sp)
+            Text("👤 Un Jugador (Normal)", fontSize = 18.sp)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -55,17 +55,17 @@ fun ModeSelectionScreen(
             onClick = { onModeSelected(GameMode.BLUETOOTH) },
             modifier = Modifier.height(50.dp)
         ) {
-            Text("Multijugador (Bluetooth)", fontSize = 18.sp)
+            Text("📶 Multijugador (Bluetooth)", fontSize = 18.sp)
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-        Text("Seleccionar Tema:", style = MaterialTheme.typography.titleMedium)
+        Text("🎨 Seleccionar Tema:", style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { onThemeChange(AppThemeOption.IPN) }) {
-                Text("Tema IPN")
+                Text("🦅 Tema IPN")
             }
             Button(onClick = { onThemeChange(AppThemeOption.ESCOM) }) {
-                Text("Tema ESCOM")
+                Text("💻 Tema ESCOM")
             }
         }
     }
