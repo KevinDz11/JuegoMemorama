@@ -92,14 +92,12 @@ class MemoryGameViewModel @Inject constructor(
 
         viewModelScope.launch {
             bluetoothService.incomingMessages.collect { message ->
-                Log.d(TAG, "Mensaje recibido: $message")
                 processBluetoothMessage(message)
             }
         }
     }
 
     fun setDifficulty(difficulty: Difficulty) {
-        // CORRECCIÓN: Asegurar que NO se reinicie el juego si estamos en Bluetooth
         if (currentGameMode == GameMode.SINGLE_PLAYER) {
             if (currentGameDifficulty != difficulty || _gameState.value.cards.isEmpty()) {
                 currentGameDifficulty = difficulty
@@ -114,12 +112,10 @@ class MemoryGameViewModel @Inject constructor(
             if (mode == GameMode.SINGLE_PLAYER) {
                 startNewGame(difficulty = currentGameDifficulty)
             } else {
-                // CORRECCIÓN: Si cambiamos a Bluetooth, limpiamos el tablero inmediatamente
-                // para evitar ver cartas aleatorias mientras esperamos la conexión/datos.
                 _gameState.update {
                     it.copy(
                         isMultiplayer = true,
-                        cards = emptyList(), // Tablero vacío hasta recibir StartGame
+                        cards = emptyList(),
                         score = 0,
                         opponentScore = 0
                     )
@@ -169,26 +165,17 @@ class MemoryGameViewModel @Inject constructor(
 
         if (isHost) {
             Log.d(TAG, "Iniciando juego como HOST.")
-
-            // 1. EL HOST GENERA LA LISTA ALEATORIA
             val maxPairs = difficulty.pairs
             val generatedCardValues = (1..maxPairs).flatMap { listOf(it, it) }.shuffled()
 
-            // 2. EL HOST ENVÍA LA LISTA EXACTA AL CLIENTE
             bluetoothService.sendMessage(BluetoothMessage.StartGame(difficulty, seed, generatedCardValues))
-
-            // 3. EL HOST INICIALIZA SU TABLERO CON ESA LISTA
             initializeMultiplayerBoard(difficulty, isHost = true, cardValues = generatedCardValues)
         } else {
-            // El cliente no hace nada aquí, espera a recibir el mensaje StartGame
-            // para llamar a initializeMultiplayerBoard con la lista correcta.
+            // Cliente espera StartGame
         }
     }
 
-    // Usamos la lista de valores recibida (cardValues), NO Random()
     private fun initializeMultiplayerBoard(difficulty: Difficulty, isHost: Boolean, cardValues: List<Int>) {
-        Log.d(TAG, "Inicializando tablero multijugador. Items: ${cardValues.size}")
-
         val cards = cardValues.mapIndexed { index, value ->
             Card(id = index, value = value)
         }
@@ -202,7 +189,7 @@ class MemoryGameViewModel @Inject constructor(
             moveHistory = emptyList(),
             isMultiplayer = true,
             isHost = isHost,
-            isMyTurn = isHost // El Host siempre empieza
+            isMyTurn = isHost // Host siempre empieza
         )
         firstSelectedCard = null
         secondSelectedCard = null
@@ -229,7 +216,7 @@ class MemoryGameViewModel @Inject constructor(
 
         if (state.isMultiplayer) {
             if (!fromRemote && !state.isMyTurn) return
-            if (fromRemote && state.isMyTurn) return
+            // Si es turno del otro y llega evento remoto, lo procesamos.
         }
 
         if (!canFlip || card.isFaceUp || card.isMatched) return
@@ -261,13 +248,17 @@ class MemoryGameViewModel @Inject constructor(
                 moves = state.moves + 1
             )
 
-            viewModelScope.launch {
-                delay(1000)
-                checkForMatch()
+            // Solo iniciamos validación automática si es UN jugador o si es MI turno en Multiplayer
+            if (!state.isMultiplayer || (state.isMultiplayer && state.isMyTurn && !fromRemote)) {
+                viewModelScope.launch {
+                    delay(1000)
+                    checkForMatch()
+                }
             }
         }
     }
 
+    // --- LÓGICA DE MATCH (AUTORITATIVA - SOLO ACTIVO) ---
     private fun checkForMatch() {
         val currentState = _gameState.value
         val updatedCards = currentState.cards.toMutableList()
@@ -275,12 +266,10 @@ class MemoryGameViewModel @Inject constructor(
         val secondCard = secondSelectedCard
 
         var newScore = currentState.score
-        var newOpponentScore = currentState.opponentScore
-        var newMatchStreak = currentState.matchStreak
-        var newMoveHistory = currentState.moveHistory
         var isMyTurn = currentState.isMyTurn
 
         if (firstCard != null && secondCard != null && firstCard.value == secondCard.value) {
+            // --- HAY MATCH ---
             soundPlayer.playMatchSound()
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard.id }
@@ -291,38 +280,29 @@ class MemoryGameViewModel @Inject constructor(
             val gameCompleted = newMatchedPairs == currentState.difficulty.pairs
 
             if (currentState.isMultiplayer) {
-                val points = 100
-                if (isMyTurn) {
-                    newScore += points
-                    bluetoothService.sendMessage(BluetoothMessage.MatchFound(firstCard.id, secondCard.id, scorerIsHost = currentState.isHost))
-                } else {
-                    newOpponentScore += points
-                }
+                // Si estoy aquí, ES mi turno. Sumo puntos.
+                newScore += 100
+                bluetoothService.sendMessage(BluetoothMessage.MatchFound(firstCard.id, secondCard.id, scorerIsHost = currentState.isHost))
             } else {
-                newMatchStreak += 1
-                val points = 100 * (1 shl (newMatchStreak - 1))
-                newScore += points
-            }
-
-            newMoveHistory = newMoveHistory + Move(firstCard.id, secondCard.id)
-            if (gameCompleted) {
-                soundPlayer.playWinSound()
-                timerJob?.cancel()
+                val newMatchStreak = currentState.matchStreak + 1
+                newScore += 100 * (1 shl (newMatchStreak - 1))
             }
 
             _gameState.value = currentState.copy(
                 cards = updatedCards,
                 matchedPairs = newMatchedPairs,
                 score = newScore,
-                opponentScore = newOpponentScore,
-                matchStreak = newMatchStreak,
-                moveHistory = newMoveHistory,
                 gameCompleted = gameCompleted,
                 isTimerRunning = !gameCompleted,
-                isMyTurn = isMyTurn
+                isMyTurn = isMyTurn // Si acierto, conservo turno
             )
+            if (gameCompleted) {
+                soundPlayer.playWinSound()
+                timerJob?.cancel()
+            }
 
         } else {
+            // --- NO HAY MATCH (FALLO) ---
             soundPlayer.playNoMatchSound()
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard?.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard?.id }
@@ -330,20 +310,15 @@ class MemoryGameViewModel @Inject constructor(
             if (secondIndex != -1) updatedCards[secondIndex] = updatedCards[secondIndex].copy(isFaceUp = false)
 
             if (currentState.isMultiplayer) {
-                if (isMyTurn) {
-                    isMyTurn = false
-                    val nextIsHost = !currentState.isHost
-                    bluetoothService.sendMessage(BluetoothMessage.TurnChange(nextTurnIsHost = nextIsHost))
-                } else {
-                    isMyTurn = true
-                }
-            } else {
-                newMatchStreak = 0
+                // Fallé: paso el turno.
+                isMyTurn = false
+                val nextIsHost = !currentState.isHost
+                bluetoothService.sendMessage(BluetoothMessage.TurnChange(nextTurnIsHost = nextIsHost))
             }
 
             _gameState.value = currentState.copy(
                 cards = updatedCards,
-                matchStreak = newMatchStreak,
+                matchStreak = 0,
                 isMyTurn = isMyTurn
             )
         }
@@ -352,35 +327,91 @@ class MemoryGameViewModel @Inject constructor(
         canFlip = true
     }
 
+    // --- PROCESAMIENTO DE MENSAJES (PASIVO) ---
     private fun processBluetoothMessage(msg: BluetoothMessage) {
         when (msg) {
             is BluetoothMessage.StartGame -> {
-                Log.d(TAG, "Recibido StartGame. Configurando tablero Cliente.")
+                Log.d(TAG, "StartGame recibido.")
                 currentGameMode = GameMode.BLUETOOTH
                 currentGameDifficulty = msg.difficulty
-                // EL CLIENTE USA LA LISTA DEL HOST
                 initializeMultiplayerBoard(msg.difficulty, isHost = false, cardValues = msg.cardValues)
             }
             is BluetoothMessage.FlipCard -> {
                 val card = _gameState.value.cards.find { it.id == msg.cardId }
                 if (card != null) onCardClick(card, fromRemote = true)
             }
-            is BluetoothMessage.MatchFound -> { /* Sincronizado en checkForMatch */ }
+            is BluetoothMessage.MatchFound -> {
+                Log.d(TAG, "MatchFound recibido.")
+
+                // 1. Actualizar cartas
+                val currentCards = _gameState.value.cards.toMutableList()
+                val c1Index = currentCards.indexOfFirst { it.id == msg.card1Id }
+                val c2Index = currentCards.indexOfFirst { it.id == msg.card2Id }
+
+                if(c1Index != -1) currentCards[c1Index] = currentCards[c1Index].copy(isMatched = true, isFaceUp = true)
+                if(c2Index != -1) currentCards[c2Index] = currentCards[c2Index].copy(isMatched = true, isFaceUp = true)
+
+                // 2. Verificar FINAL DEL JUEGO robustamente
+                // Contamos cuántas cartas están matcheadas en total para evitar desincronía
+                val matchedCount = currentCards.count { it.isMatched }
+                val totalCards = _gameState.value.difficulty.pairs * 2
+                val isGameCompleted = matchedCount == totalCards
+
+                // 3. Sonido correcto
+                if (isGameCompleted) {
+                    soundPlayer.playWinSound()
+                } else {
+                    soundPlayer.playMatchSound()
+                }
+
+                // 4. Actualizar Estado (incluyendo gameCompleted para que salte el dialog)
+                _gameState.update {
+                    it.copy(
+                        cards = currentCards,
+                        opponentScore = it.opponentScore + 100,
+                        matchedPairs = matchedCount / 2,
+                        gameCompleted = isGameCompleted,
+                        isTimerRunning = !isGameCompleted
+                    )
+                }
+
+                firstSelectedCard = null
+                secondSelectedCard = null
+                canFlip = true
+            }
             is BluetoothMessage.TurnChange -> {
+                Log.d(TAG, "TurnChange recibido.")
+                soundPlayer.playNoMatchSound()
+
+                // Voltear cartas no matcheadas
+                val currentCards = _gameState.value.cards.toMutableList()
+                val openCards = currentCards.filter { it.isFaceUp && !it.isMatched }
+                openCards.forEach { card ->
+                    val idx = currentCards.indexOfFirst { it.id == card.id }
+                    if (idx != -1) currentCards[idx] = currentCards[idx].copy(isFaceUp = false)
+                }
+
+                // Asignar turno
                 val amIHost = _gameState.value.isHost
                 val isNowMyTurn = (msg.nextTurnIsHost && amIHost) || (!msg.nextTurnIsHost && !amIHost)
-                if (_gameState.value.isMyTurn != isNowMyTurn) {
-                    _gameState.update { it.copy(isMyTurn = isNowMyTurn) }
+
+                _gameState.update {
+                    it.copy(
+                        cards = currentCards,
+                        isMyTurn = isNowMyTurn
+                    )
                 }
+
+                firstSelectedCard = null
+                secondSelectedCard = null
+                canFlip = true
             }
             is BluetoothMessage.RestartGame -> {}
         }
     }
 
-    // ... (El resto de funciones showSaveDialog, etc. se mantienen igual) ...
-    // COPIA AQUÍ EL RESTO DEL CÓDIGO (SaveDialogs, etc.) DEL ARCHIVO ANTERIOR
-    // SON LAS MISMAS FUNCIONES DE GUARDADO MANUAL QUE YA TIENES.
-
+    // ... FUNCIONES DE GUARDADO (Sin cambios) ...
+    // COPIAR LAS FUNCIONES DE GUARDADO MANUAL (showSaveDialog, etc.) AQUÍ
     fun showSaveDialog(show: Boolean) {
         if (currentGameMode != GameMode.SINGLE_PLAYER) return
         _gameUiState.update { it.copy(showSaveDialog = show) }
