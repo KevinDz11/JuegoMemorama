@@ -19,7 +19,7 @@ sealed class BluetoothMessage {
 
     // Si hubo match (para sincronizar puntajes)
     @Serializable
-    data class MatchFound(val card1Id: Int, val card2Id: Int, val scorerIsHost: Boolean) : BluetoothMessage()
+    data class MatchFound(val card1Id: Int, val card2Id: Int, val scorerIsHost: Boolean, val points: Int) : BluetoothMessage()
 
     // Para cambiar el turno si no hubo match
     @Serializable

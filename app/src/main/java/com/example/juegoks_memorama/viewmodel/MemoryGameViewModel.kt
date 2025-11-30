@@ -74,7 +74,6 @@ class MemoryGameViewModel @Inject constructor(
     private var loadedSaveFile: Pair<String, SaveFormat>? = null
 
     init {
-        // Carga inicial (Autoguardado) - Solo si es Single Player
         viewModelScope.launch {
             try {
                 val savedGame = repository.savedGameState.firstOrNull()
@@ -82,15 +81,12 @@ class MemoryGameViewModel @Inject constructor(
                     _gameState.value = savedGame
                     currentGameMode = GameMode.SINGLE_PLAYER
                     currentGameDifficulty = savedGame.difficulty
-                    // No iniciamos el timer automáticamente al cargar para no estresar al usuario,
-                    // iniciará al primer movimiento.
                 }
             } catch (e: Exception) {
                 repository.clearGameState()
             }
         }
 
-        // Listener de Bluetooth (INTACTO)
         viewModelScope.launch {
             bluetoothService.incomingMessages.collect { message ->
                 processBluetoothMessage(message)
@@ -99,7 +95,6 @@ class MemoryGameViewModel @Inject constructor(
     }
 
     fun setDifficulty(difficulty: Difficulty) {
-        // Solo reinicia si cambia la dificultad o si no hay cartas
         if (currentGameMode == GameMode.SINGLE_PLAYER) {
             if (currentGameDifficulty != difficulty || _gameState.value.cards.isEmpty()) {
                 currentGameDifficulty = difficulty
@@ -114,27 +109,25 @@ class MemoryGameViewModel @Inject constructor(
             if (mode == GameMode.SINGLE_PLAYER) {
                 startNewGame(difficulty = currentGameDifficulty)
             } else {
-                // Modo Bluetooth: Limpiar estado visual
                 timerJob?.cancel()
                 _gameState.update {
                     it.copy(
                         isMultiplayer = true,
                         cards = emptyList(),
                         score = 0,
-                        opponentScore = 0
+                        opponentScore = 0,
+                        myPairs = 0,
+                        opponentPairs = 0
                     )
                 }
             }
         }
     }
 
-    // --- LÓGICA UN JUGADOR ---
     fun startNewGame(difficulty: Difficulty = currentGameDifficulty) {
-        // 1. CORRECCIÓN TIEMPO: Cancelar job anterior siempre
         stopTimer()
-
         currentGameDifficulty = difficulty
-        loadedSaveFile = null // Reseteamos el archivo cargado porque es juego nuevo
+        loadedSaveFile = null
         currentGameMode = GameMode.SINGLE_PLAYER
 
         val maxPairs = difficulty.pairs
@@ -152,19 +145,19 @@ class MemoryGameViewModel @Inject constructor(
             isMultiplayer = false,
             isMyTurn = true,
             elapsedTimeInSeconds = 0,
-            isTimerRunning = false
+            isTimerRunning = false,
+            myPairs = 0,
+            opponentPairs = 0
         )
         firstSelectedCard = null
         secondSelectedCard = null
         canFlip = true
 
-        // Limpiar el autoguardado al iniciar nuevo juego limpio
         viewModelScope.launch {
             repository.clearGameState()
         }
     }
 
-    // --- LÓGICA MULTIJUGADOR (INTACTO) ---
     fun startMultiplayerGame(isHost: Boolean, difficulty: Difficulty) {
         currentGameMode = GameMode.BLUETOOTH
         currentGameDifficulty = difficulty
@@ -173,12 +166,13 @@ class MemoryGameViewModel @Inject constructor(
         val seed = System.currentTimeMillis()
 
         if (isHost) {
-            Log.d(TAG, "Iniciando juego como HOST.")
             val maxPairs = difficulty.pairs
             val generatedCardValues = (1..maxPairs).flatMap { listOf(it, it) }.shuffled()
 
             bluetoothService.sendMessage(BluetoothMessage.StartGame(difficulty, seed, generatedCardValues))
             initializeMultiplayerBoard(difficulty, isHost = true, cardValues = generatedCardValues)
+            // En multiplayer, el timer arranca al iniciar la partida para ambos
+            startTimer()
         }
     }
 
@@ -196,18 +190,17 @@ class MemoryGameViewModel @Inject constructor(
             moveHistory = emptyList(),
             isMultiplayer = true,
             isHost = isHost,
-            isMyTurn = isHost
+            isMyTurn = isHost,
+            myPairs = 0,
+            opponentPairs = 0
         )
         firstSelectedCard = null
         secondSelectedCard = null
         canFlip = true
     }
 
-    // --- MANEJO DEL TIMER ---
     private fun startTimer() {
-        if (currentGameMode == GameMode.BLUETOOTH) return
-
-        // CORRECCIÓN TIEMPO: Si ya está activo, no lanzar otro coroutine
+        // PERMITIMOS EL TIMER EN BLUETOOTH TAMBIÉN
         if (timerJob?.isActive == true) return
 
         _gameState.update { it.copy(isTimerRunning = true) }
@@ -242,7 +235,6 @@ class MemoryGameViewModel @Inject constructor(
             bluetoothService.sendMessage(BluetoothMessage.FlipCard(card.id))
         }
 
-        // Iniciar timer solo en Single Player y si no está corriendo
         if (!state.isMultiplayer) startTimer()
 
         val updatedCards = state.cards.toMutableList()
@@ -264,7 +256,6 @@ class MemoryGameViewModel @Inject constructor(
                 moves = state.moves + 1
             )
 
-            // Validación match
             if (!state.isMultiplayer || (state.isMultiplayer && state.isMyTurn && !fromRemote)) {
                 viewModelScope.launch {
                     delay(1000)
@@ -274,7 +265,6 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
-    // --- LÓGICA DE MATCH ---
     private fun checkForMatch() {
         val currentState = _gameState.value
         val updatedCards = currentState.cards.toMutableList()
@@ -283,6 +273,7 @@ class MemoryGameViewModel @Inject constructor(
 
         var newScore = currentState.score
         var isMyTurn = currentState.isMyTurn
+        var newMyPairs = currentState.myPairs
 
         if (firstCard != null && secondCard != null && firstCard.value == secondCard.value) {
             // --- HAY MATCH ---
@@ -295,40 +286,42 @@ class MemoryGameViewModel @Inject constructor(
             val newMatchedPairs = currentState.matchedPairs + 1
             val gameCompleted = newMatchedPairs == currentState.difficulty.pairs
 
-            if (currentState.isMultiplayer) {
-                newScore += 100
-                bluetoothService.sendMessage(BluetoothMessage.MatchFound(firstCard.id, secondCard.id, scorerIsHost = currentState.isHost))
-            } else {
-                // 5. CORRECCIÓN PUNTUACIÓN:
-                // Streak empieza en 0.
-                // 1er acierto (streak 0 -> 1): 100 * 2^(1-1) = 100 * 1 = 100
-                // 2do acierto seguido (streak 1 -> 2): 100 * 2^(2-1) = 100 * 2 = 200
-                // 3er acierto seguido (streak 2 -> 3): 100 * 2^(3-1) = 100 * 4 = 400
-                val newMatchStreak = currentState.matchStreak + 1
-                val pointsToAdd = 100 * (1 shl (newMatchStreak - 1))
-                newScore += pointsToAdd
+            // CÁLCULO DE PUNTOS: IGUAL PARA SINGLE Y MULTI PLAYER (Base + Streak)
+            val newMatchStreak = currentState.matchStreak + 1
+            val pointsToAdd = 100 * (1 shl (newMatchStreak - 1))
+            newScore += pointsToAdd
+            newMyPairs += 1
 
-                // Actualizamos el streak en el estado
-                _gameState.update { it.copy(matchStreak = newMatchStreak) }
+            if (currentState.isMultiplayer) {
+                // Enviamos los puntos calculados para que el otro dispositivo los sume
+                bluetoothService.sendMessage(
+                    BluetoothMessage.MatchFound(
+                        firstCard.id,
+                        secondCard.id,
+                        scorerIsHost = currentState.isHost,
+                        points = pointsToAdd // ENVIAMOS LOS PUNTOS EXACTOS
+                    )
+                )
             }
 
             _gameState.value = _gameState.value.copy(
                 cards = updatedCards,
                 matchedPairs = newMatchedPairs,
                 score = newScore,
+                matchStreak = newMatchStreak, // Actualizamos racha
                 gameCompleted = gameCompleted,
-                isMyTurn = isMyTurn
+                isMyTurn = isMyTurn,
+                myPairs = newMyPairs // Actualizamos mis pares
             )
 
             if (gameCompleted) {
                 soundPlayer.playWinSound()
                 stopTimer()
-                // Limpiar autoguardado al terminar
                 viewModelScope.launch { repository.clearGameState() }
             }
 
         } else {
-            // --- NO HAY MATCH (FALLO) ---
+            // --- NO HAY MATCH ---
             soundPlayer.playNoMatchSound()
             val firstIndex = updatedCards.indexOfFirst { it.id == firstCard?.id }
             val secondIndex = updatedCards.indexOfFirst { it.id == secondCard?.id }
@@ -341,10 +334,9 @@ class MemoryGameViewModel @Inject constructor(
                 bluetoothService.sendMessage(BluetoothMessage.TurnChange(nextTurnIsHost = nextIsHost))
             }
 
-            // CORRECCIÓN PUNTUACIÓN: Si falla, streak vuelve a 0
             _gameState.value = currentState.copy(
                 cards = updatedCards,
-                matchStreak = 0,
+                matchStreak = 0, // Reinicia racha
                 isMyTurn = isMyTurn
             )
         }
@@ -353,13 +345,13 @@ class MemoryGameViewModel @Inject constructor(
         canFlip = true
     }
 
-    // --- PROCESAMIENTO DE MENSAJES BLUETOOTH (INTACTO) ---
     private fun processBluetoothMessage(msg: BluetoothMessage) {
         when (msg) {
             is BluetoothMessage.StartGame -> {
                 currentGameMode = GameMode.BLUETOOTH
                 currentGameDifficulty = msg.difficulty
                 initializeMultiplayerBoard(msg.difficulty, isHost = false, cardValues = msg.cardValues)
+                startTimer() // Cliente inicia timer al recibir StartGame
             }
             is BluetoothMessage.FlipCard -> {
                 val card = _gameState.value.cards.find { it.id == msg.cardId }
@@ -373,12 +365,12 @@ class MemoryGameViewModel @Inject constructor(
                 if(c1Index != -1) currentCards[c1Index] = currentCards[c1Index].copy(isMatched = true, isFaceUp = true)
                 if(c2Index != -1) currentCards[c2Index] = currentCards[c2Index].copy(isMatched = true, isFaceUp = true)
 
-                val matchedCount = currentCards.count { it.isMatched }
-                val totalCards = _gameState.value.difficulty.pairs * 2
-                val isGameCompleted = matchedCount == totalCards
+                val matchedCount = currentCards.count { it.isMatched } / 2
+                val isGameCompleted = matchedCount == _gameState.value.difficulty.pairs
 
                 if (isGameCompleted) {
                     soundPlayer.playWinSound()
+                    stopTimer()
                 } else {
                     soundPlayer.playMatchSound()
                 }
@@ -386,8 +378,9 @@ class MemoryGameViewModel @Inject constructor(
                 _gameState.update {
                     it.copy(
                         cards = currentCards,
-                        opponentScore = it.opponentScore + 100,
-                        matchedPairs = matchedCount / 2,
+                        opponentScore = it.opponentScore + msg.points, // Sumamos los puntos que calculó el rival
+                        opponentPairs = it.opponentPairs + 1, // Sumamos par al rival
+                        matchedPairs = matchedCount,
                         gameCompleted = isGameCompleted
                     )
                 }
@@ -421,27 +414,16 @@ class MemoryGameViewModel @Inject constructor(
         }
     }
 
-    // --- GUARDADO MANUAL Y SALIDA ---
-
-    // Corrección 2: Salir sin guardar
     fun onExitGame() {
         stopTimer()
-        // Opcional: Limpiar autoguardado al salir manualmente
         viewModelScope.launch { repository.clearGameState() }
     }
 
     fun showSaveDialog(show: Boolean) {
         if (currentGameMode != GameMode.SINGLE_PLAYER) return
-
-        // Corrección 3: Obtener nombres existentes para validación
         viewModelScope.launch {
             val allNames = repository.getAllSaveFileNames()
-            _gameUiState.update {
-                it.copy(
-                    showSaveDialog = show,
-                    existingSaveNames = allNames
-                )
-            }
+            _gameUiState.update { it.copy(showSaveDialog = show, existingSaveNames = allNames) }
         }
     }
 
@@ -451,7 +433,6 @@ class MemoryGameViewModel @Inject constructor(
         if (show) {
             viewModelScope.launch {
                 val files = repository.getAvailableSaveFiles()
-                // Cargamos TODOS los archivos compatibles con Single Player para mostrarlos
                 val historyList = files.mapNotNull { (filename, format, timestamp) ->
                     val loadedState = repository.loadGameManual(filename, format)
                     if (loadedState != null) {
@@ -469,13 +450,10 @@ class MemoryGameViewModel @Inject constructor(
         if (currentGameMode != GameMode.SINGLE_PLAYER) return
         viewModelScope.launch {
             if (loadedSaveFile != null) {
-                // Si ya viene de un archivo, sobrescribimos (opcional, o pedir nuevo nombre)
                 saveGame(loadedSaveFile!!.first, loadedSaveFile!!.second)
             } else {
                 val allNames = repository.getAllSaveFileNames()
-                _gameUiState.update {
-                    it.copy(existingSaveNames = allNames, showSaveDialog = true)
-                }
+                _gameUiState.update { it.copy(existingSaveNames = allNames, showSaveDialog = true) }
             }
         }
     }
@@ -501,13 +479,7 @@ class MemoryGameViewModel @Inject constructor(
                 currentGameMode = GameMode.SINGLE_PLAYER
                 val filenameWithoutExtension = filename.substringBeforeLast('.')
                 loadedSaveFile = filenameWithoutExtension to format
-
-                // Si no está completado, reanudar timer si estaba corriendo
-                if (!loadedState.gameCompleted) {
-                    // El usuario debe hacer un movimiento para arrancar, o arrancamos ya:
-                    // startTimer() -> Preferible no arrancar hasta que interactúe
-                    _gameState.update { it.copy(isTimerRunning = false) }
-                }
+                _gameState.update { it.copy(isTimerRunning = false) }
             }
             showHistoryDialog(false)
         }
