@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.juegoks_memorama.viewmodel.MemoryGameViewModel
 import com.example.juegoks_memorama.model.Difficulty
+import com.example.juegoks_memorama.model.GameMode
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,13 +40,11 @@ fun BluetoothScreen(
 
     // --- LÓGICA DE PERMISOS INTELIGENTE ---
     val permissionsToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        // Android 12+ (Tu cel nuevo)
         arrayOf(
             Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.BLUETOOTH_CONNECT
         )
     } else {
-        // Android 10 (Tu cel viejo)
         arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION
         )
@@ -54,13 +53,12 @@ fun BluetoothScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
-        // Verificar si se aceptaron todos
         permissionGranted = perms.values.all { it }
         if (permissionGranted) {
             try {
                 pairedDevices = viewModel.bluetoothService.getPairedDevices()
             } catch (e: SecurityException) {
-                // Manejar caso raro donde el permiso se revocó justo después
+                // Manejar excepción
             }
         }
     }
@@ -97,17 +95,19 @@ fun BluetoothScreen(
                 Button(
                     onClick = {
                         if (permissionGranted) {
+                            // Configuramos el modo ANTES de conectar
+                            viewModel.setGameMode(GameMode.BLUETOOTH)
                             scope.launch {
                                 try {
-                                    // Esperar conexión...
+                                    Toast.makeText(context, "Esperando conexión...", Toast.LENGTH_SHORT).show()
                                     viewModel.bluetoothService.startServer()
-                                } catch (e: SecurityException) {
-                                    Toast.makeText(context, "Falta permiso de Bluetooth", Toast.LENGTH_SHORT).show()
+                                    // Al conectar, inicia como HOST
+                                    viewModel.startMultiplayerGame(isHost = true, Difficulty.MEDIUM)
+                                    onGameStart() // Navegar SOLO cuando termine la conexión
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Error al conectar: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                            // Al conectar, inicia como HOST
-                            viewModel.startMultiplayerGame(isHost = true, Difficulty.MEDIUM)
-                            onGameStart()
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -120,26 +120,29 @@ fun BluetoothScreen(
 
                 LazyColumn {
                     items(pairedDevices) { device ->
-                        // Usamos un componente Card para que se vea mejor y manejamos el click
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .clickable {
                                     if (permissionGranted) {
+                                        // Configuramos el modo ANTES de conectar para limpiar el tablero
+                                        viewModel.setGameMode(GameMode.BLUETOOTH)
+
                                         scope.launch {
                                             try {
+                                                Toast.makeText(context, "Conectando...", Toast.LENGTH_SHORT).show()
                                                 viewModel.bluetoothService.connectToDevice(device)
-                                            } catch (e: SecurityException) {
-                                                Toast.makeText(context, "Error de permisos al conectar", Toast.LENGTH_SHORT).show()
+                                                // SOLO navegamos si la conexión fue exitosa
+                                                onGameStart()
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "No se pudo conectar", Toast.LENGTH_SHORT).show()
+                                                // Si falla, regresamos a modo single player o nos quedamos aquí
                                             }
                                         }
-                                        // Al conectar, espera configuración (NO es host)
-                                        onGameStart()
                                     }
                                 }
                         ) {
-                            // Usamos @SuppressLint porque ya verificamos permissionGranted arriba
                             @SuppressLint("MissingPermission")
                             val deviceName = device.name ?: "Desconocido"
                             Text(
